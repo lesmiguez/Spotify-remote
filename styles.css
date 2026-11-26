@@ -180,9 +180,10 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   .it .acts{gap:3px}
 }
 /* very narrow cover screens: collapse row buttons so titles stay readable */
-@media (max-width:400px){
-  .it .acts .ab:not(.pri){display:none}
-  .it .acts .ab.pri{padding:6px 12px}
+@media (max-width:440px){
+  .it{flex-wrap:wrap;row-gap:6px}
+  .it .m{flex:1 1 0}
+  .it .acts{flex:1 0 100%;padding-left:60px;gap:6px}
 }
 
 /* Unfolded, portrait-ish (760-999): two clear columns */
@@ -204,7 +205,6 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   #v-vault .card:first-child{grid-column:1;grid-row:1}
 
   #v-listening .grid.two{gap:16px}
-  .it .acts .ab:not(.pri){display:inline-block}
 }
 
 /* Unfolded, landscape / large inner display (1000+) */
