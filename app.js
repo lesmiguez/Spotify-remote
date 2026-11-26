@@ -5,7 +5,7 @@
      Config — keys and scopes are unchanged so existing sign-ins and
      preferences carry over.
      ===================================================================== */
-  var APP_VERSION = "2.1 · Studio One";
+  var APP_VERSION = "2.2 · Studio One (playback 2)";
   var API = "https://api.spotify.com/v1";
   var ACCOUNTS = "https://accounts.spotify.com";
   var SCOPES = [
@@ -96,7 +96,7 @@
      Settings + theme (same storage key and shape as before)
      ===================================================================== */
   var S = { limit: 10, theme: "light" };
-  try { var rawS = JSON.parse(lsGet(LS.set) || "{}"); if (rawS.limit) S.limit = +rawS.limit; if (rawS.theme) S.theme = rawS.theme; } catch (e) {}
+  try { var rawS = JSON.parse(lsGet(LS.set) || "{}"); if (rawS.limit) S.limit = +rawS.limit; if (rawS.theme) S.theme = rawS.theme; if (rawS.diag) S.diag = true; } catch (e) {}
   function saveSettings() { lsSet(LS.set, JSON.stringify(S)); }
   var darkMq = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : null;
   function applyTheme() {
@@ -208,26 +208,44 @@
   /* =====================================================================
      API
      ===================================================================== */
-  async function api(method, path, body) {
+  /* One request path for every Spotify call. Tracks timing for diagnostics, honours
+     429 Retry-After globally, refreshes an expired token once, and never logs tokens. */
+  var NET = { rateUntil: 0, last: null, count: 0 };
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, Math.max(0, ms)); }); }
+  async function request(method, path, body, opts) {
+    opts = opts || {};
+    if (Date.now() < NET.rateUntil) {
+      if (opts.noWait) { var rl = new Error("rate limited"); rl.status = 429; rl.local = true; throw rl; }
+      await sleep(NET.rateUntil - Date.now());
+    }
     for (var attempt = 0; attempt < 2; attempt++) {
       var token = await freshToken(attempt > 0);
       var init = { method: method, headers: { Authorization: "Bearer " + token } };
       if (body !== undefined) { init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(body); }
-      var r;
+      var t0 = Date.now(), r;
+      NET.count++;
       try { r = await fetch(API + path, init); }
-      catch (ne) { var en = new Error("network"); en.network = true; throw en; }
+      catch (ne) { NET.last = { method: method, path: path.split("?")[0], status: "network", ms: Date.now() - t0, at: Date.now() }; var en = new Error("network"); en.network = true; throw en; }
+      var ms = Date.now() - t0;
+      NET.last = { method: method, path: path.split("?")[0], status: r.status, ms: ms, at: Date.now() };
       if (r.status === 401 && attempt === 0) continue;
       if (r.status === 401) throw authError();
-      if (r.status === 204 || r.status === 202) return null;
+      if (r.status === 429) {
+        var ra = parseFloat(r.headers.get("Retry-After"));
+        NET.rateUntil = Date.now() + Math.min(60000, Math.max(1000, isFinite(ra) ? ra * 1000 : 4000));
+        var e429 = new Error("Rate limited by Spotify"); e429.status = 429; e429.retryAt = NET.rateUntil; throw e429;
+      }
+      if (r.status === 204 || r.status === 202) return { status: r.status, data: null, ms: ms };
       var text = await r.text(), j = null;
       try { j = text ? JSON.parse(text) : null; } catch (e) {}
       if (!r.ok) {
-        var e = new Error((j && j.error && j.error.message) || "Request failed (" + r.status + ")");
-        e.status = r.status; e.reason = j && j.error && j.error.reason; throw e;
+        var err = new Error((j && j.error && j.error.message) || "Request failed (" + r.status + ")");
+        err.status = r.status; err.reason = j && j.error && j.error.reason; throw err;
       }
-      return j;
+      return { status: r.status, data: j, ms: ms };
     }
   }
+  async function api(method, path, body) { return (await request(method, path, body)).data; }
   var meCache = null;
   async function getMe() { if (!meCache) meCache = await api("GET", "/me"); return meCache; }
   async function marketOf() { try { return (await getMe()).country || "US"; } catch (e) { return "US"; } }
@@ -278,17 +296,17 @@
     rows.forEach(function (r, i) { target.appendChild(stagger(r, i)); });
     updateRailNav(target);
   }
-  function isNow(uri) { return !!(st.item && st.item.uri === uri); }
-
-  async function playUri(uri) { await api("PUT", "/me/player/play", { uris: [uri] }); setTimeout(poll, 600); }
-  function playTrack(t) {
-    if (!st.device) { openDevices(); toast("Choose a device first"); return; }
-    playUri(t.uri).then(function () { toast("Playing " + t.name); }).catch(function (e) { if (e.auth) return handleAuth(); if (e.status === 404) openDevices(); toast(explain(e), true); });
+  /* Selecting a track from a list plays that list from the selected track onward,
+     so the following songs match what the user sees (Spotify accepts up to 100 URIs). */
+  function playTrack(t, listTracks) {
+    var uris = (listTracks || []).map(function (x) { return x && x.uri; }).filter(Boolean);
+    if (uris.indexOf(t.uri) < 0) uris = [t.uri];
+    return PB.play({ uris: uris, offsetUri: t.uri, track: t });
   }
   function trackItems(t, extra) {
     return [
-      { label: "Play now", icon: "play", fn: function () { return playUri(t.uri).then(function () { return "Playing " + t.name; }); } },
-      { label: "Add to queue", icon: "queue", fn: function () { return api("POST", "/me/player/queue?uri=" + encodeURIComponent(t.uri)).then(function () { setTimeout(loadQueue, 600); return "Added to queue"; }); } },
+      { label: "Play now", icon: "play", fn: function () { return Promise.resolve(PB.play({ uris: [t.uri], track: t })).then(function () { return null; }); } },
+      { label: "Add to queue", icon: "queue", fn: function () { return Promise.resolve(PB.addToQueue(t)).then(function (ok) { return ok === false ? null : "Added to queue"; }); } },
       { label: "Save to Liked Songs", icon: "heart", fn: function () { return api("PUT", "/me/library?uris=" + encodeURIComponent(t.uri)).then(function () { if (isNow(t.uri)) setHeart(true); return "Saved to Liked Songs"; }); } }
     ].concat(extra || []);
   }
@@ -302,7 +320,7 @@
     main.appendChild(thumb(t));
     main.appendChild(h("span", { class: "m" }, h("span", { class: "n", text: t.name || "" }), h("span", { class: "b", text: sub || byline(t) })));
     main.appendChild(h("span", { class: "eq", "aria-hidden": "true" }, h("i"), h("i"), h("i")));
-    main.addEventListener("click", function () { if (o.play) o.play(t); else playTrack(t); });
+    main.addEventListener("click", function () { if (o.play) o.play(t); else playTrack(t, o.list); });
     var more = h("button", { class: "more", type: "button", "aria-label": "More options for " + t.name }, icon("more"));
     more.addEventListener("click", function () { trackSheet(t, o.extra); });
     row.appendChild(main); row.appendChild(more);
@@ -318,11 +336,11 @@
     row.appendChild(main);
     return row;
   }
-  function trackTile(t) {
+  function trackTile(t, onPlay) {
     var w = h("div", { class: "tile" + (isNow(t.uri) ? " now" : ""), "data-uri": t.uri });
     var b = h("button", { class: "tmain", type: "button", "aria-label": "Play " + t.name + (byline(t) ? " by " + byline(t) : "") },
       h("span", { class: "tart" }, thumb(t, false, 300)), h("span", { class: "tn", text: t.name }), h("span", { class: "tb", text: byline(t) }));
-    b.addEventListener("click", function () { playTrack(t); });
+    b.addEventListener("click", function () { if (onPlay) onPlay(t); else playTrack(t); });
     var m = h("button", { class: "tmore", type: "button", "aria-label": "More options for " + t.name }, icon("more"));
     m.addEventListener("click", function () { trackSheet(t); });
     w.appendChild(b); w.appendChild(m);
@@ -342,7 +360,7 @@
     try { showTracks("Songs by " + a.name, await artistTracks(a, 20)); }
     catch (e) { errorState($("disOut"), e, function () { artistTop(a); }); }
   }
-  function markNow() { $$("[data-uri]").forEach(function (el) { el.classList.toggle("now", isNow(el.getAttribute("data-uri"))); }); }
+  function markNow(v) { v = v || PB.view(); var u = v.item && v.item.uri; $$("[data-uri]").forEach(function (el) { el.classList.toggle("now", !!u && el.getAttribute("data-uri") === u); }); }
 
   /* rail arrow buttons (pointer devices) */
   function updateRailNav(rail) {
@@ -465,17 +483,454 @@
   }
 
   /* =====================================================================
-     Player state + rendering
+     PlaybackController
+     The single owner of playback state. Every surface (home, mini-player,
+     expanded player, ambient, rows) renders from PB.view().
+
+     - Confirmed state only comes from GET /me/player; responses that are
+       out of order, or that started before a newer command was sent, are
+       discarded.
+     - Commands are serialized (Spotify does not guarantee ordering across
+       Player endpoints), always name the target device, and coalesce when a
+       newer press of the same toggle arrives before the first was sent.
+     - Optimistic values live in `pending` (shown immediately, marked as
+       pending) until a bounded, back-off reconciliation confirms them or
+       Spotify's real state wins.
      ===================================================================== */
-  var st = { item: null, playing: false, progress: 0, at: 0, device: null, shuffle: false, repeat: "off" };
-  var lastItemId, dragging = false, busyUntil = 0, artKey = null;
-  function applyPlayer(p) {
-    if (!p || !p.device) { st.item = null; st.playing = false; st.device = null; }
-    else { st.item = p.item || null; st.playing = !!p.is_playing; st.progress = p.progress_ms || 0; st.at = Date.now(); st.device = p.device; st.shuffle = !!p.shuffle_state; st.repeat = p.repeat_state || "off"; }
-    render();
-    var id = st.item && st.item.id;
-    if (id !== lastItemId) { lastItemId = id; loadQueue(); checkSaved(); markNow(); }
-  }
+  var PB = (function () {
+    var s = { item: null, playing: false, progress: 0, at: 0, device: null, context: null, shuffle: false, repeat: "off", actions: {}, ts: 0, type: null };
+    var pending = {};                 // field -> { value, until, at }
+    var subs = [], qsubs = [];
+    var chain = Promise.resolve(), waiting = [], cmdSerial = 0, lastSentSerial = 0, running = null;
+    var fetchSeq = 0, appliedSeq = 0, lastCmdSentAt = 0, inflight = null;
+    var timer = null, failures = 0, stopped = true;
+    var lastDeviceId = lsGet("sr.lastDevice");
+    var queue = [], queueSeq = 0, queueTimer = null;
+    var diag = { cmds: [], syncs: [], discarded: 0, offline: false };
+    var PENDING_MS = 9000;
+
+    /* ---------- state + view ---------- */
+    function now() { return Date.now(); }
+    function setPending(k, value, extra) { pending[k] = Object.assign({ value: value, until: now() + PENDING_MS, at: now() }, extra || {}); }
+    function clearPending(keys) { (keys || []).forEach(function (k) { delete pending[k]; }); }
+    function pos(v) {
+      if (!v.item || !v.item.duration_ms) return 0;
+      return Math.max(0, Math.min(v.item.duration_ms, v.progress + (v.playing ? now() - v.at : 0)));
+    }
+    function view() {
+      var v = Object.assign({}, s), t = now();
+      Object.keys(pending).forEach(function (k) {
+        var p = pending[k];
+        if (p.until < t) { delete pending[k]; return; }
+        if (k === "item") { v.item = p.value; v.progress = 0; v.at = p.at; }
+        else if (k === "progress") { v.progress = p.value; v.at = p.at; }
+        else if (k === "device") { v.device = p.value; }
+        else if (k === "volume") { v.device = Object.assign({}, v.device || {}, { volume_percent: p.value }); }
+        else v[k] = p.value;
+      });
+      v.pending = Object.keys(pending);
+      v.position = pos(v);
+      return v;
+    }
+    function disallowed(action) {
+      var a = s.actions || {};
+      if (a.disallows) return a.disallows[action] === true;
+      return a[action] === false;
+    }
+    function restricted() { return !!(s.device && s.device.is_restricted); }
+    function emit() { var v = view(); subs.forEach(function (fn) { try { fn(v); } catch (e) {} }); }
+    function confirms(k, p) {
+      if (k === "playing") return s.playing === p.value;
+      if (k === "shuffle") return s.shuffle === p.value;
+      if (k === "repeat") return s.repeat === p.value;
+      if (k === "device") return !!(s.device && p.value && s.device.id === p.value.id);
+      if (k === "volume") return !!(s.device && Math.abs((s.device.volume_percent || 0) - p.value) <= 2);
+      if (k === "item") return !!(s.item && p.value && s.item.uri === p.value.uri);
+      if (k === "progress") return Math.abs(pos(s) - (p.value + (s.playing ? now() - p.at : 0))) < 2500;
+      return false;
+    }
+
+    function apply(p, meta) {
+      if (meta.seq < appliedSeq || meta.startedAt < lastCmdSentAt) { diag.discarded++; return false; }
+      var sameDev = p && p.device && s.device && p.device.id === s.device.id;
+      if (p && p.timestamp && s.ts && sameDev && p.timestamp < s.ts) { diag.discarded++; return false; }
+      appliedSeq = meta.seq;
+      var prevUri = s.item && s.item.uri, prevDev = s.device && s.device.id;
+      if (!p || !p.device) {
+        s.item = null; s.playing = false; s.device = null; s.context = null; s.actions = {}; s.ts = 0; s.type = null;
+      } else {
+        s.item = p.item || null; s.playing = !!p.is_playing; s.progress = p.progress_ms || 0; s.at = now();
+        s.device = p.device; s.context = p.context || null; s.shuffle = !!p.shuffle_state; s.repeat = p.repeat_state || "off";
+        s.actions = p.actions || {}; s.ts = p.timestamp || 0; s.type = p.currently_playing_type || (p.item && p.item.type) || null;
+        if (p.device.id) { lastDeviceId = p.device.id; lsSet("sr.lastDevice", lastDeviceId); }
+      }
+      Object.keys(pending).forEach(function (k) { if (confirms(k, pending[k])) delete pending[k]; });
+      emit();
+      var uri = s.item && s.item.uri, dev = s.device && s.device.id;
+      if (uri !== prevUri) { onTrack.forEach(function (fn) { fn(s.item); }); refreshQueue(250); }
+      else if (dev !== prevDev) refreshQueue(250);
+      return true;
+    }
+    var onTrack = [];
+
+    /* ---------- sync ---------- */
+    async function fetchState(reason, fresh) {
+      if (inflight) { if (!fresh) return inflight; try { await inflight; } catch (e) {} }
+      if (now() < NET.rateUntil) { schedule(); var rl = new Error("rate limited"); rl.status = 429; rl.local = true; throw rl; }
+      var seq = ++fetchSeq, startedAt = now();
+      inflight = (async function () {
+        try {
+          var r = await request("GET", "/me/player?additional_types=episode", undefined, { noWait: true });
+          var ok = apply(r.data, { seq: seq, startedAt: startedAt });
+          logSync({ reason: reason, status: r.status, ms: r.ms, applied: ok });
+          if (failures || diag.offline) { failures = 0; diag.offline = false; banner("", ""); }
+          return s;
+        } catch (e) {
+          logSync({ reason: reason, status: e.status || (e.network ? "network" : "error"), ms: now() - startedAt, applied: false });
+          if (e.auth) { handleAuth(); throw e; }
+          if (!e.local) failures++;
+          if (e.network && failures >= 2) { diag.offline = true; banner("warn", "You’re offline. Playback will resync when the connection returns."); }
+          else if (e.status === 429) banner("warn", "Spotify asked Studio to slow down. Playback info will refresh in a few seconds.");
+          else if (failures === 3) banner("warn", "Having trouble reaching Spotify. Retrying…");
+          throw e;
+        } finally { inflight = null; schedule(); }
+      })();
+      return inflight;
+    }
+    function logSync(x) { x.at = now(); diag.syncs.unshift(x); diag.syncs.length = Math.min(diag.syncs.length, 12); diagChanged(); }
+    function schedule() {
+      clearTimeout(timer);
+      if (stopped || document.hidden) return;
+      var d;
+      if (now() < NET.rateUntil) d = NET.rateUntil - now() + 250;
+      else if (failures) d = Math.min(30000, 2000 * Math.pow(2, failures - 1));
+      else if (!s.device) d = 10000;
+      else if (s.playing && s.item && s.item.duration_ms) d = Math.max(900, Math.min(5000, s.item.duration_ms - pos(s) + 700));
+      else d = 9000;
+      timer = setTimeout(function () { fetchState("poll").catch(function () {}); }, d);
+    }
+    function start() { stopped = false; fetchState("start", true).catch(function () {}); refreshQueue(300); }
+    function stop() { stopped = true; clearTimeout(timer); }
+    function foreground(reason) {
+      if (stopped) return;
+      fetchState(reason || "foreground", true).catch(function () {});
+      refreshQueue(400);
+    }
+
+    /* ---------- queue ---------- */
+    function refreshQueue(delay) {
+      clearTimeout(queueTimer);
+      queueTimer = setTimeout(async function () {
+        var seq = ++queueSeq;
+        try {
+          var r = await request("GET", "/me/player/queue", undefined, { noWait: true });
+          if (seq !== queueSeq) return;
+          var cur = r.data && r.data.currently_playing;
+          if (cur && s.item && cur.uri !== s.item.uri && !pending.item) { refreshQueue(700); }
+          queue = ((r.data && r.data.queue) || []).filter(function (t) { return t && t.uri; });
+          qsubs.forEach(function (fn) { fn(queue, null); });
+        } catch (e) {
+          if (seq !== queueSeq) return;
+          if (e.auth) return handleAuth();
+          if (e.status === 404 || e.status === 204) { queue = []; qsubs.forEach(function (fn) { fn(queue, null); }); }
+          else qsubs.forEach(function (fn) { fn(null, e); });
+        }
+      }, delay == null ? 0 : delay);
+    }
+
+    /* ---------- commands ---------- */
+    function targetDevice() {
+      if (pending.device && pending.device.value) return pending.device.value.id;
+      return (s.device && s.device.id) || lastDeviceId || null;
+    }
+    function withDevice(path, id) {
+      id = id || targetDevice();
+      return id ? path + (path.indexOf("?") > -1 ? "&" : "?") + "device_id=" + encodeURIComponent(id) : path;
+    }
+    function record(cmd) {
+      var r = { label: cmd.label, at: now(), status: "queued", http: null, httpMs: null, confirm: null, confirmMs: null, device: null };
+      diag.cmds.unshift(r); diag.cmds.length = Math.min(diag.cmds.length, 12); cmd.rec = r; diagChanged();
+      return r;
+    }
+    function enqueue(cmd) {
+      if (cmd.coalesce) {
+        var ex = waiting.filter(function (c) { return c.key === cmd.key; })[0];
+        if (ex) { ex.value = cmd.value; if (cmd.optimistic) cmd.optimistic(cmd.value); ex.rec.label = cmd.label; emit(); diagChanged(); return ex.promise; }
+      }
+      cmd.serial = ++cmdSerial;
+      record(cmd);
+      if (cmd.optimistic) cmd.optimistic(cmd.value);
+      emit();
+      waiting.push(cmd);
+      cmd.promise = chain = chain.then(function () { return run(cmd); }, function () { return run(cmd); });
+      return cmd.promise;
+    }
+    async function findDevice() {
+      try {
+        var d = await api("GET", "/me/player/devices"), list = (d && d.devices) || [];
+        return list.filter(function (x) { return x.id === lastDeviceId; })[0] || list.filter(function (x) { return x.is_active; })[0] || (list.length === 1 ? list[0] : null);
+      } catch (e) { return null; }
+    }
+    async function run(cmd) {
+      waiting.splice(waiting.indexOf(cmd), 1);
+      running = cmd;
+      var rec = cmd.rec, attempt = 0, devRetry = false, usedFallback = false, req = cmd.build(cmd.value);
+      rec.status = "sending"; rec.device = req.deviceName || (s.device && s.device.name) || null; diagChanged();
+      var t0 = now();
+      lastSentSerial = cmd.serial;
+      try {
+        while (true) {
+          lastCmdSentAt = now();
+          try {
+            var res = await request(req.method, req.path, req.body);
+            rec.http = res.status; rec.httpMs = res.ms; rec.status = "sent"; diagChanged();
+            break;
+          } catch (e) {
+            rec.http = e.status || (e.network ? "network" : "error"); diagChanged();
+            if (e.auth) { rec.status = "auth"; clearPending(cmd.keys); emit(); handleAuth(); return false; }
+            if (e.status === 429 && attempt < 2) { attempt++; rec.status = "rate-limited, waiting"; diagChanged(); await sleep(Math.max(600, NET.rateUntil - now())); continue; }
+            if ((e.status >= 500 || e.network) && cmd.idempotent && attempt < 1) { attempt++; await sleep(700); continue; }
+            if ((e.status === 404 || e.reason === "NO_ACTIVE_DEVICE") && !devRetry && cmd.deviceRetry !== false) {
+              devRetry = true; var d = await findDevice();
+              if (d) { req = cmd.build(cmd.value, d.id); continue; }
+            }
+            if (cmd.fallback && !usedFallback && e.status !== 429 && e.status !== 404 && !e.network) { usedFallback = true; req = cmd.fallback(cmd.value); rec.label += " (fallback)"; continue; }
+            rec.status = "failed"; clearPending(cmd.keys); emit();
+            if (e.status === 404 || e.reason === "NO_ACTIVE_DEVICE") { openDevices(); toast("No active device. Choose where to play.", true); }
+            else toast(explain(e), true);
+            fetchState("after error", true).catch(function () {});
+            return false;
+          }
+        }
+      } finally { running = null; }
+      if (cmd.awaitConfirm) { await reconcile(cmd, t0); return cmd.rec.confirm !== false; }
+      reconcile(cmd, t0);
+      return true;
+    }
+    async function reconcile(cmd, t0) {
+      var rec = cmd.rec, delays = [150, 300, 450, 700, 1000, 1400, 2000], lastUri = null, stable = 0;
+      rec.status = "confirming"; diagChanged();
+      for (var i = 0; i < delays.length; i++) {
+        await sleep(delays[i]);
+        if (lastSentSerial !== cmd.serial) { rec.status = "superseded"; rec.confirm = "superseded"; diagChanged(); return; }
+        try { await fetchState("confirm " + cmd.label, true); } catch (e) { if (e.auth) return; continue; }
+        var uri = s.item && s.item.uri;
+        stable = uri === lastUri ? stable + 1 : 0; lastUri = uri;
+        if (cmd.expect(s, stable, cmd.value)) {
+          rec.status = "confirmed"; rec.confirm = true; rec.confirmMs = now() - t0;
+          clearPending(cmd.keys); emit(); diagChanged();
+          if (cmd.after) cmd.after();
+          return;
+        }
+      }
+      rec.status = "not confirmed"; rec.confirm = false; rec.confirmMs = now() - t0;
+      clearPending(cmd.keys); emit(); diagChanged();
+      if (cmd.after) cmd.after();
+    }
+    function guard(action, message) {
+      if (restricted()) { toast("This device can’t be controlled from other apps.", true); return false; }
+      if (action && disallowed(action)) { toast(message || "Spotify doesn’t allow that right now.", true); return false; }
+      return true;
+    }
+    function needDevice() {
+      if (s.device || pending.device || lastDeviceId) return true;
+      openDevices(); toast("Choose a device first"); return false;
+    }
+
+    /* play / pause */
+    function togglePlay() {
+      var v = view();
+      if (!v.device && !lastDeviceId) { openDevices(); return; }
+      var want = !v.playing;
+      if (!guard(want ? "resuming" : "pausing", want ? "Spotify can’t resume right now." : "Spotify can’t pause right now.")) return;
+      return enqueue({
+        key: "playpause", coalesce: true, idempotent: true, value: want, keys: ["playing", "progress"],
+        label: want ? "Resume" : "Pause",
+        optimistic: function (val) { var cv = view(); setPending("progress", cv.position); setPending("playing", val); },
+        build: function (val, dev) { return { method: "PUT", path: withDevice(val ? "/me/player/play" : "/me/player/pause", dev) }; },
+        expect: function (st, stable, val) { return st.playing === val; }
+      });
+    }
+    /* next / previous */
+    function burstStartUri() {
+      var p = waiting.concat(running ? [running] : []).filter(function (c) { return c.key === "skip"; })[0];
+      return p ? p.burstStart : (s.item && s.item.uri);
+    }
+    function next() {
+      if (!needDevice() || !guard("skipping_next", "Spotify doesn’t allow skipping this.")) return;
+      var v = view(), predicted = queue[0] || null, start = burstStartUri();
+      if (predicted) queue = queue.slice(1);
+      qsubs.forEach(function (fn) { fn(queue, null); });
+      return enqueue({
+        key: "skip", label: "Next", value: predicted, burstStart: start, keys: ["item", "progress"],
+        optimistic: function () { if (predicted) setPending("item", predicted); else setPending("progress", 0); },
+        build: function (val, dev) { return { method: "POST", path: withDevice("/me/player/next", dev) }; },
+        expect: function (st, stable) {
+          var uri = st.item && st.item.uri;
+          if (predicted && uri === predicted.uri) return true;
+          return uri && uri !== start && stable >= 1;
+        }
+      });
+    }
+    function previous() {
+      if (!needDevice()) return;
+      var v = view();
+      // Native behaviour: after the first ~3 seconds, Previous restarts the current track.
+      if (v.position > 3000 || disallowed("skipping_prev")) return seek(0, "Restart track");
+      if (!guard("skipping_prev")) return;
+      var start = burstStartUri();
+      return enqueue({
+        key: "skip", label: "Previous", value: null, burstStart: start, keys: ["progress"],
+        optimistic: function () { setPending("progress", 0); },
+        build: function (val, dev) { return { method: "POST", path: withDevice("/me/player/previous", dev) }; },
+        expect: function (st, stable) { var uri = st.item && st.item.uri; return (uri && uri !== start && stable >= 1) || (uri === start && pos(st) < 4000 && stable >= 2); }
+      });
+    }
+    /* seek */
+    function seek(ms, label) {
+      var v = view();
+      if (!v.item || !needDevice() || !guard("seeking", "Seeking isn’t available for this content.")) return;
+      ms = Math.max(0, Math.min(Math.round(ms), (v.item.duration_ms || 0) - 1000));
+      return enqueue({
+        key: "seek", coalesce: true, idempotent: true, value: ms, keys: ["progress"], label: label || "Seek to " + fmt(ms),
+        optimistic: function (val) { setPending("progress", val); },
+        build: function (val, dev) { return { method: "PUT", path: withDevice("/me/player/seek?position_ms=" + val, dev) }; },
+        expect: function (st) { var p = pending.progress; return p ? confirms("progress", p) : true; }
+      });
+    }
+    /* shuffle */
+    function setShuffle(val, o) {
+      if (!needDevice() || !guard("toggling_shuffle", "Shuffle isn’t available for this content.")) return;
+      if (val == null) val = !view().shuffle;
+      return enqueue({
+        key: "shuffle", coalesce: !(o && o.awaitConfirm), awaitConfirm: !!(o && o.awaitConfirm), idempotent: true, value: val, keys: ["shuffle"], label: val ? "Shuffle on" : "Shuffle off",
+        optimistic: function (v2) { setPending("shuffle", v2); },
+        build: function (v2, dev) { return { method: "PUT", path: withDevice("/me/player/shuffle?state=" + (v2 ? "true" : "false"), dev) }; },
+        expect: function (st, stable, v2) { return st.shuffle === v2; },
+        after: function () { refreshQueue(300); }
+      });
+    }
+    /* repeat: off -> context -> track -> off, skipping modes Spotify disallows */
+    function cycleRepeat() {
+      if (!needDevice() || !guard()) return;
+      var order = ["off", "context", "track"], curr = view().repeat, nxt = curr;
+      for (var i = 1; i <= 3; i++) {
+        var m = order[(order.indexOf(curr) + i) % 3];
+        if (m === "context" && disallowed("toggling_repeat_context")) continue;
+        if (m === "track" && disallowed("toggling_repeat_track")) continue;
+        nxt = m; break;
+      }
+      if (nxt === curr) { toast("Repeat isn’t available for this content.", true); return; }
+      return enqueue({
+        key: "repeat", coalesce: true, idempotent: true, value: nxt, keys: ["repeat"], label: "Repeat " + (nxt === "context" ? "all" : nxt === "track" ? "one" : "off"),
+        optimistic: function (v2) { setPending("repeat", v2); },
+        build: function (v2, dev) { return { method: "PUT", path: withDevice("/me/player/repeat?state=" + v2, dev) }; },
+        expect: function (st, stable, v2) { return st.repeat === v2; },
+        after: function () { refreshQueue(300); }
+      });
+    }
+    /* volume */
+    function setVolume(val) {
+      var v = view();
+      if (!v.device || v.device.supports_volume === false || !guard()) return;
+      return enqueue({
+        key: "volume", coalesce: true, idempotent: true, value: Math.round(val), keys: ["volume"], label: "Volume " + Math.round(val) + "%",
+        optimistic: function (v2) { setPending("volume", v2); },
+        build: function (v2, dev) { return { method: "PUT", path: withDevice("/me/player/volume?volume_percent=" + v2, dev) }; },
+        expect: function (st, stable, v2) { return !!(st.device && Math.abs((st.device.volume_percent || 0) - v2) <= 2); }
+      });
+    }
+    /* start playback: a context (album/playlist/collection) or an explicit list of tracks */
+    function play(opts) {
+      if (!needDevice()) return;
+      if (restricted()) { toast("This device can’t be controlled from other apps.", true); return; }
+      if (disallowed("interrupting_playback")) { toast("Spotify won’t interrupt what’s playing right now.", true); return; }
+      var track = opts.track || null, label = opts.label || (track ? "Play " + track.name : "Play");
+      function bodyFor(useUris) {
+        if (!useUris && opts.context) {
+          var b = { context_uri: opts.context };
+          if (opts.offsetUri) b.offset = { uri: opts.offsetUri };
+          else if (opts.offsetPosition != null) b.offset = { position: opts.offsetPosition };
+          return b;
+        }
+        var uris = (opts.uris || (track ? [track.uri] : [])).slice();
+        var i = opts.offsetUri ? uris.indexOf(opts.offsetUri) : 0;
+        if (i > 0) uris = uris.slice(i);
+        return { uris: uris.slice(0, 100) };
+      }
+      var cmd = {
+        key: "play", label: label, value: null, keys: ["item", "playing", "progress"], idempotent: true,
+        optimistic: function () { if (track) setPending("item", track); setPending("playing", true); },
+        build: function (val, dev) { return { method: "PUT", path: withDevice("/me/player/play", dev), body: bodyFor(!opts.context) }; },
+        expect: function (st, stable) {
+          var uri = st.item && st.item.uri;
+          if (!st.playing) return false;
+          if (track) return uri === track.uri;
+          if (opts.context) return !!(st.context && st.context.uri === opts.context) || (stable >= 1 && uri);
+          return !!uri;
+        },
+        after: function () { refreshQueue(300); }
+      };
+      if (opts.context && opts.uris && opts.uris.length) cmd.fallback = function () { return { method: "PUT", path: withDevice("/me/player/play"), body: bodyFor(true) }; };
+      return enqueue(cmd);
+    }
+    /* shuffle-play a context: confirm shuffle is on before starting, then start at a random position */
+    async function shufflePlay(opts) {
+      if (!needDevice()) return;
+      var ok = true;
+      if (!view().shuffle && s.device) ok = await setShuffle(true, { awaitConfirm: true });
+      if (ok === false) return;
+      var o = Object.assign({}, opts);
+      if (o.total && o.supportsOffset) o.offsetPosition = Math.floor(Math.random() * o.total);
+      else if (o.uris && o.uris.length) { o.uris = shuffleArr(o.uris.slice()); o.context = o.supportsOffset ? o.context : null; }
+      o.label = "Shuffle play";
+      var r = await play(o);
+      if (!s.device && r !== false) setShuffle(true);
+      return r;
+    }
+    /* add to queue, then verify it appears */
+    function addToQueue(t) {
+      if (!needDevice()) return Promise.resolve(false);
+      return enqueue({
+        key: "queue", label: "Queue " + t.name, value: t.uri, keys: [],
+        build: function (val, dev) { return { method: "POST", path: withDevice("/me/player/queue?uri=" + encodeURIComponent(val), dev) }; },
+        expect: function () { return true; },
+        after: function () { refreshQueue(250); }
+      });
+    }
+    /* skip forward to the k-th item of the visible queue (k = 1 is the next track) */
+    async function skipTo(k, t) {
+      k = Math.max(1, Math.min(k, 10));
+      for (var i = 0; i < k; i++) next();
+      if (t) { setPending("item", t); emit(); }
+    }
+    /* move playback to another Connect device */
+    function transfer(dev) {
+      if (!dev || !dev.id) return;
+      var keepPlaying = view().playing || !s.device;
+      return enqueue({
+        key: "device", label: "Switch to " + dev.name, value: dev, keys: ["device"], deviceRetry: false,
+        optimistic: function () { setPending("device", { id: dev.id, name: dev.name, type: dev.type, volume_percent: dev.volume_percent, supports_volume: dev.supports_volume }); },
+        build: function () { return { method: "PUT", path: "/me/player", body: { device_ids: [dev.id], play: keepPlaying }, deviceName: dev.name }; },
+        expect: function (st) { return !!(st.device && st.device.id === dev.id); },
+        after: function () { refreshQueue(300); }
+      });
+    }
+
+    return {
+      view: view, subscribe: function (fn) { subs.push(fn); }, onQueue: function (fn) { qsubs.push(fn); }, onTrack: function (fn) { onTrack.push(fn); },
+      queue: function () { return queue; }, refreshQueue: refreshQueue,
+      start: start, stop: stop, foreground: foreground, sync: function (r) { return fetchState(r || "manual", true); },
+      togglePlay: togglePlay, next: next, previous: previous, seek: seek, setShuffle: setShuffle, cycleRepeat: cycleRepeat, setVolume: setVolume,
+      play: play, shufflePlay: shufflePlay, addToQueue: addToQueue, skipTo: skipTo, transfer: transfer,
+      disallowed: disallowed, restricted: restricted, diag: diag, lastDeviceId: function () { return lastDeviceId; }
+    };
+  })();
+
+  /* ---------- rendering (every surface reads PB.view()) ---------- */
+  var dragging = false, artKey = null, diagListeners = [];
+  function diagChanged() { diagListeners.forEach(function (fn) { fn(); }); }
+  function isNow(uri) { var v = PB.view(); return !!(v.item && v.item.uri === uri); }
   function setArt(it) {
     var url = it ? imgOf(it.album || it, 400) : null, key = url || ("fb:" + (it ? it.id : ""));
     if (key === artKey) return; artKey = key;
@@ -489,118 +944,166 @@
     if (url) { bg.src = url; extractColor(url).then(function (c) { if (artKey === url) setArtColor(c); }); }
     else { bg.removeAttribute("src"); setArtColor(null); }
   }
-  function devState() { return !st.device ? "off" : (st.playing && st.item ? "live" : "idle"); }
-  function render() {
-    var it = st.item, root = document.documentElement, dev = devState();
-    root.setAttribute("data-playing", String(!!(st.playing && it)));
+  function render(v) {
+    v = v || PB.view();
+    var it = v.item, root = document.documentElement, pend = v.pending;
+    var dev = !v.device ? "off" : (v.playing && it ? "live" : "idle");
+    root.setAttribute("data-playing", String(!!(v.playing && it)));
     root.setAttribute("data-dev", dev);
     var title = it ? it.name : "Nothing playing", artist = it ? byline(it) : "";
-    setText("npTitle", title); setText("npArtist", artist || (st.device ? "Press play to start" : "Connect a device to start listening"));
-    setText("heroTitle", title); setText("heroArtist", artist || (st.device ? "Ready on " + st.device.name : "Choose a device to start listening"));
-    setText("miniTitle", title); setText("miniArtist", artist || (st.device ? "Ready on " + st.device.name : "Tap to connect a device"));
+    setText("npTitle", title); setText("npArtist", artist || (v.device ? "Press play to start" : "Connect a device to start listening"));
+    setText("heroTitle", title); setText("heroArtist", artist || (v.device ? "Ready on " + v.device.name : "Choose a device to start listening"));
+    setText("miniTitle", title); setText("miniArtist", artist || (v.device ? "Ready on " + v.device.name : "Tap to connect a device"));
     setText("ambTitle", title); setText("ambArtist", artist);
-    var dname = st.device ? st.device.name : "Connect";
+    var switching = pend.indexOf("device") > -1;
+    var dname = v.device ? v.device.name : "Connect";
     $$(".js-devname").forEach(function (e) { if (e.textContent !== dname) e.textContent = dname; });
-    setText("npCtx", st.device ? (dev === "live" ? "Playing on " : "Connected to ") + st.device.name : "Connect a device");
-    setText("heroKicker", st.device ? (dev === "live" ? "Now playing on " : "Paused on ") + st.device.name : "Not connected");
-    $("deviceBtn").setAttribute("aria-label", st.device ? "Device: " + st.device.name + (dev === "live" ? ", playing" : ", paused") : "Connect a device");
-    $$(".js-play").forEach(function (b) { b.setAttribute("aria-label", st.playing ? "Pause" : "Play"); });
-    $("shuffle").setAttribute("aria-pressed", String(st.shuffle));
-    $("repeat").setAttribute("aria-pressed", String(st.repeat !== "off"));
-    $("repeat").setAttribute("aria-label", "Repeat: " + (st.repeat === "context" ? "all" : st.repeat === "track" ? "one" : "off"));
-    $("repeatOne").hidden = st.repeat !== "track";
+    setText("npCtx", v.device ? (switching ? "Switching to " : dev === "live" ? "Playing on " : "Connected to ") + v.device.name : "Connect a device");
+    setText("heroKicker", v.device ? (switching ? "Switching to " : dev === "live" ? "Now playing on " : "Paused on ") + v.device.name : "Not connected");
+    $("deviceBtn").setAttribute("aria-label", v.device ? "Device: " + v.device.name + (switching ? ", switching" : dev === "live" ? ", playing" : ", paused") : "Connect a device");
+    var pp = pend.indexOf("playing") > -1;
+    $$(".js-play").forEach(function (b) {
+      b.setAttribute("aria-label", v.playing ? "Pause" : "Play");
+      b.classList.toggle("pending", pp);
+      b.disabled = PB.restricted() || (v.playing ? PB.disallowed("pausing") : PB.disallowed("resuming")) && !!v.item;
+    });
+    $$(".js-next").forEach(function (b) { b.disabled = PB.restricted() || PB.disallowed("skipping_next"); b.classList.toggle("pending", pend.indexOf("item") > -1); });
+    $$(".js-prev").forEach(function (b) { b.disabled = PB.restricted(); });
+    $$(".js-devopen").forEach(function (b) { b.classList.toggle("pending", switching); });
+    var sh = $("shuffle"); sh.setAttribute("aria-pressed", String(v.shuffle)); sh.classList.toggle("pending", pend.indexOf("shuffle") > -1); sh.disabled = PB.restricted() || PB.disallowed("toggling_shuffle");
+    var rp = $("repeat"); rp.setAttribute("aria-pressed", String(v.repeat !== "off")); rp.classList.toggle("pending", pend.indexOf("repeat") > -1);
+    rp.setAttribute("aria-label", "Repeat: " + (v.repeat === "context" ? "all" : v.repeat === "track" ? "one" : "off"));
+    rp.disabled = PB.restricted() || (PB.disallowed("toggling_repeat_context") && PB.disallowed("toggling_repeat_track"));
+    $("repeatOne").hidden = v.repeat !== "track";
     setArt(it);
-    var vol = $("volume"), canVol = st.device && st.device.supports_volume !== false && st.device.type !== "Smartphone";
-    vol.hidden = !!st.device && !canVol; vol.disabled = !canVol; $("volNote").hidden = !st.device || !!canVol;
-    if (st.device && st.device.volume_percent != null && Date.now() > busyUntil) { vol.value = st.device.volume_percent; paintRange(vol); }
-    $("seek").disabled = !it;
-    tick();
+    var vol = $("volume"), canVol = v.device && v.device.supports_volume !== false && v.device.type !== "Smartphone";
+    vol.hidden = !!v.device && !canVol; vol.disabled = !canVol || PB.restricted(); $("volNote").hidden = !v.device || !!canVol;
+    if (v.device && v.device.volume_percent != null && !volDragging) { vol.value = v.device.volume_percent; paintRange(vol); }
+    var sk = $("seek"); sk.disabled = !it || PB.restricted() || PB.disallowed("seeking"); sk.classList.toggle("pending", pend.indexOf("progress") > -1);
+    markNow(v);
+    tick(v);
   }
-  function tick() {
-    var it = st.item, seek = $("seek"), frac = 0, pos = 0, len = 0;
-    if (it && it.duration_ms) { len = it.duration_ms; pos = Math.min(len, st.progress + (st.playing ? Date.now() - st.at : 0)); frac = pos / len; }
+  function tick(v) {
+    v = v || PB.view();
+    var it = v.item, seek = $("seek"), len = it && it.duration_ms ? it.duration_ms : 0, p = len ? v.position : 0, frac = len ? p / len : 0;
     var tf = "scaleX(" + frac.toFixed(4) + ")";
     ["miniBar", "heroBar", "ambBar"].forEach(function (id) { $(id).style.transform = tf; });
-    setText("tLen", fmt(len)); setText("heroLen", fmt(len)); setText("heroNow", fmt(pos));
-    if (!dragging) { seek.value = Math.round(frac * 1000); paintRange(seek); setText("tNow", fmt(pos)); }
+    setText("tLen", fmt(len)); setText("heroLen", fmt(len)); setText("heroNow", fmt(p));
+    if (!dragging) { seek.value = Math.round(frac * 1000); paintRange(seek); setText("tNow", fmt(p)); }
   }
-  setInterval(function () { if (!document.hidden) tick(); }, 500);
+  setInterval(function () { if (!document.hidden && !$("app").hidden) tick(); }, 500);
+  PB.subscribe(render);
 
-  async function loadQueue() {
-    try {
-      var q = await api("GET", "/me/player/queue"), l = ((q && q.queue) || []).filter(function (t) { return t && t.uri; });
-      var emptyQ = { icon: "queue", title: "Nothing queued", text: st.device ? "Songs you add to the queue show up here." : "Connect a device to see what’s coming up." };
-      list($("queueList"), l.slice(0, 10).map(function (t, i) { return trackRow(t, i); }), emptyQ);
-      list($("homeQueue"), l.slice(0, 12).map(trackTile), emptyQ);
-    } catch (e) {
-      if (e.auth) return handleAuth();
-      if (e.status === 404 || e.status === 204) { stateBox($("homeQueue"), { icon: "queue", title: "Nothing queued", text: "Connect a device to see what’s coming up." }); return; }
-      errorState($("homeQueue"), e, loadQueue);
-    }
-  }
+  /* queue rendering */
+  PB.onQueue(function (l, err) {
+    var v = PB.view();
+    if (err) { errorState($("homeQueue"), err, function () { PB.refreshQueue(0); }); return; }
+    var emptyQ = { icon: "queue", title: "Nothing queued", text: v.device ? "Songs you add to the queue show up here." : "Connect a device to see what’s coming up." };
+    var playAt = function (i) { return function (t) { PB.skipTo(i + 1, t); }; };
+    list($("queueList"), l.slice(0, 10).map(function (t, i) { return trackRow(t, i, null, { play: playAt(i) }); }), emptyQ);
+    list($("homeQueue"), l.slice(0, 12).map(function (t, i) { return trackTile(t, playAt(i)); }), emptyQ);
+  });
+  function loadQueue() { PB.refreshQueue(0); }
+
+  /* liked-song heart for the current track */
   function setHeart(on) { var b = $("npSave"); b.setAttribute("aria-pressed", String(on)); b.setAttribute("aria-label", on ? "Remove from Liked Songs" : "Save to Liked Songs"); }
-  async function checkSaved() {
-    var it = st.item, b = $("npSave");
+  async function checkSaved(it) {
+    var b = $("npSave");
     if (!it || !it.uri || it.type === "episode") { b.hidden = true; return; }
     b.hidden = false; setHeart(false);
-    try { var r = await api("GET", "/me/library/contains?uris=" + encodeURIComponent(it.uri)); if (st.item && st.item.uri === it.uri) setHeart(!!(r && r[0])); }
+    try { var r = await api("GET", "/me/library/contains?uris=" + encodeURIComponent(it.uri)); if (isNow(it.uri)) setHeart(!!(r && r[0])); }
     catch (e) { if (e.auth) return handleAuth(); }
   }
+  PB.onTrack(checkSaved);
   $("npSave").addEventListener("click", async function () {
-    var it = st.item; if (!it) return;
+    var it = PB.view().item; if (!it) return;
     var on = this.getAttribute("aria-pressed") === "true"; setHeart(!on);
     try { await api(on ? "DELETE" : "PUT", "/me/library?uris=" + encodeURIComponent(it.uri)); toast(on ? "Removed from Liked Songs" : "Saved to Liked Songs"); }
     catch (e) { setHeart(on); if (e.auth) return handleAuth(); toast(explain(e), true); }
   });
 
-  var pollTimer = null, failures = 0;
-  async function poll() {
-    if (document.hidden) return;
-    try { applyPlayer(await api("GET", "/me/player")); if (failures >= 3) banner("", ""); failures = 0; }
-    catch (e) {
-      if (e.auth) return handleAuth();
-      if (++failures === 3) banner("warn", e.network ? "You’re offline. Playback info will update when you reconnect." : "Having trouble reaching Spotify. Retrying…");
-    }
+  /* ---------- playback diagnostics (no tokens, ever) ---------- */
+  function ago(t) { if (!t) return "—"; var d = Math.round((Date.now() - t) / 1000); return d < 1 ? "just now" : d + "s ago"; }
+  function shortId(id) { return id ? id.slice(0, 6) + "…" : "—"; }
+  function diagSnapshot() {
+    var v = PB.view(), d = PB.diag, c = d.cmds[0], y = d.syncs[0];
+    return {
+      version: APP_VERSION,
+      device: v.device ? { name: v.device.name, type: v.device.type, id: shortId(v.device.id), active: !!v.device.is_active, restricted: !!v.device.is_restricted, volume: v.device.supports_volume !== false ? v.device.volume_percent : "unsupported" } : null,
+      playing: v.playing, item: v.item ? { name: v.item.name, uri: v.item.uri } : null, position: fmt(v.position) + " / " + fmt(v.item && v.item.duration_ms || 0),
+      context: v.context ? { type: v.context.type, uri: v.context.uri } : null,
+      shuffle: v.shuffle, repeat: v.repeat, pending: v.pending,
+      lastCommand: c ? { label: c.label, status: c.status, http: c.http, httpMs: c.httpMs, confirmed: c.confirm, confirmMs: c.confirmMs } : null,
+      lastSync: y ? { reason: y.reason, status: y.status, ms: y.ms, applied: y.applied, age: ago(y.at) } : null,
+      staleResponsesDiscarded: d.discarded, rateLimitedUntil: NET.rateUntil > Date.now() ? new Date(NET.rateUntil).toLocaleTimeString() : null,
+      requests: NET.count, recentCommands: d.cmds.slice(0, 8).map(function (x) { return x.label + " · " + x.status + (x.http != null ? " · HTTP " + x.http : "") + (x.confirmMs != null ? " · " + x.confirmMs + "ms" : ""); })
+    };
   }
-  function startPolling() { stopPolling(); poll(); pollTimer = setInterval(poll, 4000); }
-  function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
-  document.addEventListener("visibilitychange", function () { if (!document.hidden && !$("app").hidden) poll(); });
-  window.addEventListener("online", function () { if (!$("app").hidden) poll(); });
-
-  /* commands: optimistic UI + per-button pending state */
-  async function cmd(method, path, optimistic, body, btn) {
-    var snap = Object.assign({}, st);
-    if (optimistic) { optimistic(); render(); }
-    if (btn) btn.classList.add("busy");
-    try { await api(method, path, body); setTimeout(poll, 450); }
-    catch (e) {
-      if (e.auth) return handleAuth();
-      st = snap; render();
-      if (e.status === 404 || e.reason === "NO_ACTIVE_DEVICE") openDevices();
-      toast(explain(e), true);
-    } finally { if (btn) setTimeout(function () { btn.classList.remove("busy"); }, 250); }
+  function renderDiag() {
+    if (!S.diag) return;
+    var x = diagSnapshot(), rows = [
+      ["Device", x.device ? x.device.name + " · " + x.device.type + " · " + x.device.id + (x.device.restricted ? " · restricted" : "") : "None active"],
+      ["State", (x.playing ? "Playing" : "Paused") + " · " + x.position],
+      ["Track", x.item ? x.item.name : "—"],
+      ["Context", x.context ? x.context.type + " · " + x.context.uri : "None (track list or nothing playing)"],
+      ["Shuffle", (x.shuffle ? "On" : "Off") + (x.pending.indexOf("shuffle") > -1 ? " (pending)" : "")],
+      ["Repeat", x.repeat + (x.pending.indexOf("repeat") > -1 ? " (pending)" : "")],
+      ["Pending", x.pending.length ? x.pending.join(", ") : "None"],
+      ["Last command", x.lastCommand ? x.lastCommand.label + " · " + x.lastCommand.status + (x.lastCommand.http != null ? " · HTTP " + x.lastCommand.http : "") : "—"],
+      ["Confirmed in", x.lastCommand && x.lastCommand.confirmMs != null ? x.lastCommand.confirmMs + " ms" : "—"],
+      ["Last sync", x.lastSync ? x.lastSync.reason + " · " + x.lastSync.status + " · " + x.lastSync.ms + " ms · " + x.lastSync.age + (x.lastSync.applied ? "" : " · discarded") : "—"],
+      ["Stale discarded", String(x.staleResponsesDiscarded)],
+      ["Rate limit", x.rateLimitedUntil ? "Paused until " + x.rateLimitedUntil : "OK"],
+      ["Requests", String(x.requests)]
+    ];
+    [["diagList", rows], ["npDiagList", rows.slice(0, 10)]].forEach(function (pair) {
+      var dl = $(pair[0]); if (!dl) return; clear(dl);
+      pair[1].forEach(function (r) { dl.appendChild(h("dt", { text: r[0] })); dl.appendChild(h("dd", { text: r[1] })); });
+    });
+    var log = $("diagLog"); clear(log);
+    x.recentCommands.forEach(function (line) { log.appendChild(h("div", { text: line })); });
   }
-  function togglePlay(e) {
-    var btn = e && e.currentTarget;
-    if (!st.device) { openDevices(); return; }
-    if (st.playing) cmd("PUT", "/me/player/pause", function () { st.progress += Date.now() - st.at; st.at = Date.now(); st.playing = false; }, undefined, btn);
-    else cmd("PUT", "/me/player/play", function () { st.at = Date.now(); st.playing = true; }, {}, btn);
+  function applyDiagSetting() {
+    $("diagPanel").hidden = !S.diag; $("npDiag").hidden = !S.diag;
+    $$("#diagSeg button").forEach(function (b) { b.setAttribute("aria-pressed", String((b.getAttribute("data-on") === "1") === !!S.diag)); });
+    renderDiag();
   }
-  function skip(dir, e) { if (!st.device) return openDevices(); cmd("POST", "/me/player/" + dir, null, undefined, e && e.currentTarget); }
-  $$(".js-play").forEach(function (b) { b.addEventListener("click", togglePlay); });
-  $$(".js-next").forEach(function (b) { b.addEventListener("click", function (e) { skip("next", e); }); });
-  $$(".js-prev").forEach(function (b) { b.addEventListener("click", function (e) { skip("previous", e); }); });
-  $("shuffle").addEventListener("click", function (e) { var n = !st.shuffle; cmd("PUT", "/me/player/shuffle?state=" + n, function () { st.shuffle = n; }, undefined, e.currentTarget); });
-  $("repeat").addEventListener("click", function (e) { var n = st.repeat === "off" ? "context" : st.repeat === "context" ? "track" : "off"; cmd("PUT", "/me/player/repeat?state=" + n, function () { st.repeat = n; }, undefined, e.currentTarget); });
-  var seek = $("seek");
-  seek.addEventListener("input", function () { dragging = true; paintRange(seek); if (st.item) setText("tNow", fmt(seek.value / 1000 * st.item.duration_ms)); });
-  seek.addEventListener("change", function () {
-    if (!st.item) { dragging = false; return; }
-    var ms = Math.round(seek.value / 1000 * st.item.duration_ms);
-    cmd("PUT", "/me/player/seek?position_ms=" + ms, function () { st.progress = ms; st.at = Date.now(); }); dragging = false;
+  [["Off", "0"], ["On", "1"]].forEach(function (o) {
+    var b = h("button", { type: "button", "data-on": o[1], text: o[0] });
+    b.addEventListener("click", function () { S.diag = o[1] === "1"; saveSettings(); applyDiagSetting(); });
+    $("diagSeg").appendChild(b);
   });
-  var volTimer;
-  $("volume").addEventListener("input", function () { var v = this; paintRange(v); busyUntil = Date.now() + 2500; clearTimeout(volTimer); volTimer = setTimeout(function () { cmd("PUT", "/me/player/volume?volume_percent=" + v.value); }, 250); });
+  diagListeners.push(function () { renderDiag(); });
+  PB.subscribe(function () { renderDiag(); });
+  setInterval(function () { if (S.diag && !document.hidden && !$("app").hidden) renderDiag(); }, 1000);
+  $("diagCopy").addEventListener("click", async function () {
+    try { await navigator.clipboard.writeText(JSON.stringify(diagSnapshot(), null, 2)); toast("Diagnostics copied"); }
+    catch (e) { toast("Couldn’t copy. Take a screenshot instead.", true); }
+  });
+  $("diagSync").addEventListener("click", function () { PB.sync("manual").catch(function () {}); PB.refreshQueue(0); toast("Syncing with Spotify"); });
+
+  /* controls */
+  function startPolling() { PB.start(); }
+  function stopPolling() { PB.stop(); }
+  $$(".js-play").forEach(function (b) { b.addEventListener("click", function () { PB.togglePlay(); }); });
+  $$(".js-next").forEach(function (b) { b.addEventListener("click", function () { PB.next(); }); });
+  $$(".js-prev").forEach(function (b) { b.addEventListener("click", function () { PB.previous(); }); });
+  $("shuffle").addEventListener("click", function () { PB.setShuffle(); });
+  $("repeat").addEventListener("click", function () { PB.cycleRepeat(); });
+  var seekEl = $("seek");
+  seekEl.addEventListener("input", function () { dragging = true; paintRange(seekEl); var it = PB.view().item; if (it) setText("tNow", fmt(seekEl.value / 1000 * it.duration_ms)); });
+  seekEl.addEventListener("change", function () {
+    var it = PB.view().item; dragging = false;
+    if (it) PB.seek(seekEl.value / 1000 * it.duration_ms);
+  });
+  var volTimer, volDragging = false;
+  $("volume").addEventListener("input", function () { var v = this; volDragging = true; paintRange(v); clearTimeout(volTimer); volTimer = setTimeout(function () { PB.setVolume(+v.value); volDragging = false; }, 250); });
+
+  /* return to foreground: reconcile immediately */
+  document.addEventListener("visibilitychange", function () { if (document.hidden) return; if (!$("app").hidden) PB.foreground("foreground"); });
+  window.addEventListener("pageshow", function (e) { if (e.persisted && !$("app").hidden) PB.foreground("resume"); });
+  window.addEventListener("focus", function () { if (!$("app").hidden) PB.foreground("focus"); });
+  window.addEventListener("online", function () { if (!$("app").hidden) PB.foreground("online"); });
 
   /* =====================================================================
      Expanded player (sheet on phones, docked panel on wide screens)
@@ -626,7 +1129,7 @@
     if (!docked()) np.setAttribute("inert", "");
   }
   if (dockMq.addEventListener) dockMq.addEventListener("change", syncDock); else if (dockMq.addListener) dockMq.addListener(syncDock);
-  $$(".js-open").forEach(function (b) { b.addEventListener("click", function () { if (docked()) return; if (!st.device && !st.item) { openDevices(); return; } openNP(); }); });
+  $$(".js-open").forEach(function (b) { b.addEventListener("click", function () { if (docked()) return; var v = PB.view(); if (!v.device && !v.item && !PB.lastDeviceId()) { openDevices(); return; } openNP(); }); });
   $("npClose").addEventListener("click", closeNP);
   (function swipeToClose() {
     var np = $("np"), y0 = null, dy = 0;
@@ -686,13 +1189,11 @@
       clear(box); box.removeAttribute("aria-busy");
       if (!l.length) { stateBox(box, { icon: "device", title: "No devices found", text: "Open Spotify on your phone, speaker or computer, play something briefly, then refresh.", action: { label: "Refresh", fn: loadDevices } }); return; }
       l.forEach(function (dev) {
-        var b = h("button", { type: "button", class: "dev" + (dev.is_active ? " on" : "") }, icon(devIcon(dev.type)), h("span", { class: "m" }, h("span", { class: "n", text: dev.name }), h("span", { class: "b", text: dev.is_active ? (st.playing ? "Playing" : "Connected") : dev.type })), dev.is_active ? icon("check") : null);
+        var b = h("button", { type: "button", class: "dev" + (dev.is_active ? " on" : "") }, icon(devIcon(dev.type)), h("span", { class: "m" }, h("span", { class: "n", text: dev.name }), h("span", { class: "b", text: dev.is_restricted ? "Can’t be controlled from other apps" : dev.is_active ? (PB.view().playing ? "Playing" : "Connected") : dev.type })), dev.is_active ? icon("check") : null);
         if (dev.is_active) b.lastChild.classList.add("tick");
         b.addEventListener("click", async function () {
-          if (dev.is_active) { closeSheet("devices"); return; }
-          b.classList.add("pending"); b.querySelector(".b").textContent = "Connecting…";
-          try { await api("PUT", "/me/player", { device_ids: [dev.id], play: true }); closeSheet("devices"); toast("Connected to " + dev.name); setTimeout(poll, 700); }
-          catch (e) { b.classList.remove("pending"); b.querySelector(".b").textContent = dev.type; if (e.auth) return handleAuth(); toast(explain(e), true); }
+          if (dev.is_active || dev.is_restricted) { closeSheet("devices"); if (dev.is_restricted) toast("That device can’t be controlled from other apps.", true); return; }
+          closeSheet("devices"); var ok = await PB.transfer(dev); if (ok !== false) toast("Connecting to " + dev.name + "…");
         });
         box.appendChild(b);
       });
@@ -716,7 +1217,8 @@
     try {
       var rec = await getRecent(force), seen = {}, out = [];
       rec.forEach(function (x) { if (!seen[x.track.id]) { seen[x.track.id] = 1; out.push(x.track); } });
-      list(rr, out.slice(0, 16).map(trackTile), { icon: "disc", title: "No recent plays yet", text: "Play something in Spotify and it will show up here." });
+      var recentShown = out.slice(0, 16);
+      list(rr, recentShown.map(function (t) { return trackTile(t, function (x) { playTrack(x, recentShown); }); }), { icon: "disc", title: "No recent plays yet", text: "Play something in Spotify and it will show up here." });
     } catch (e) { errorState(rr, e, function () { loadRecent(true); }); }
   }
   async function loadHomeArtists() {
@@ -818,32 +1320,34 @@
     window.scrollTo(0, 0);
   }
   function closeDetail() { $("libDetail").hidden = true; $("libHome").hidden = false; detail.ctx = null; lib.more = null; }
-  async function playContext(ctx, offsetUri, shuffle) {
-    if (!st.device) { openDevices(); toast("Choose a device first"); return; }
-    try {
-      if (shuffle != null) await api("PUT", "/me/player/shuffle?state=" + (shuffle ? "true" : "false"));
-      var body = { context_uri: ctx }; if (offsetUri) body.offset = { uri: offsetUri };
-      await api("PUT", "/me/player/play", body); setTimeout(poll, 600);
-      toast(shuffle ? "Shuffling" : "Playing");
-    } catch (e) { if (e.auth) return handleAuth(); if (e.status === 404) openDevices(); toast(explain(e), true); }
+  /* Library playback keeps the album / playlist context so the following tracks are native.
+     Liked Songs rows use the loaded list (Spotify documents offsets only for albums and playlists). */
+  function playFromDetail(t, shuffle) {
+    var ctx = detail.ctx, uris = (detail.tracks || []).map(function (x) { return x.uri; }), coll = /:collection$/.test(ctx || "");
+    if (!ctx) return;
+    if (shuffle) return PB.shufflePlay({ context: ctx, uris: uris, total: detail.total || uris.length, supportsOffset: true });
+    if (t && coll) return PB.play({ uris: uris, offsetUri: t.uri, track: t });
+    if (t) return PB.play({ context: ctx, offsetUri: t.uri, track: t, uris: uris });
+    return PB.play({ context: ctx, uris: uris, label: "Play " + $("dTitle").textContent });
   }
-  $("dPlay").addEventListener("click", function () { if (detail.ctx) playContext(detail.ctx); });
-  $("dShuffle").addEventListener("click", function () { if (detail.ctx) playContext(detail.ctx, null, true); });
+  $("dPlay").addEventListener("click", function () { playFromDetail(null, false); });
+  $("dShuffle").addEventListener("click", function () { playFromDetail(null, true); });
   $("dMore").addEventListener("click", function () { if (lib.more) lib.more(); });
   $("libBack").addEventListener("click", closeDetail);
 
   /* paged track list shared by Liked Songs, owned playlists and albums */
   function pagedTracks(fetchPage, mapItem, ctx, emptyOpts) {
-    var rows = [], offset = 0, token = {}; detail.token = token;
+    var rows = [], offset = 0, token = {}; detail.token = token; detail.tracks = []; detail.total = null;
     async function next() {
       var btn = $("dMore"); btn.disabled = true; btn.textContent = "Loading…";
       try {
         var r = await fetchPage(offset); if (detail.token !== token) return;
         var items = (r && r.items) || [];
         items.map(mapItem).filter(function (x) { return x && x.t && x.t.uri && (!x.t.type || x.t.type === "track"); }).forEach(function (x) {
-          rows.push(trackRow(x.t, rows.length, x.sub, { play: function (t) { playContext(ctx, t.uri); } }));
+          detail.tracks.push(x.t);
+          rows.push(trackRow(x.t, rows.length, x.sub, { play: function (t) { playFromDetail(t, false); } }));
         });
-        offset += items.length;
+        offset += items.length; if (r && r.total != null) detail.total = r.total;
         if (offset === items.length) list($("dList"), rows.slice(), emptyOpts);
         else rows.slice(-items.length).forEach(function (r2, i) { $("dList").appendChild(stagger(r2, i)); });
         var more = r && r.total != null ? offset < r.total : items.length === 50;
@@ -940,7 +1444,7 @@
     } catch (e) { $("genreCard").hidden = true; errorState($("topArtists"), e, loadTop); }
     try {
       var t = await api("GET", "/me/top/tracks?time_range=" + rk + "&limit=" + S.limit);
-      list($("topTracks"), (t.items || []).map(function (x, i) { return trackRow(x, i, null, { rank: true }); }), { icon: "note", title: "No top tracks yet", text: "Spotify needs a bit more listening in the last " + label + "." });
+      list($("topTracks"), (t.items || []).map(function (x, i) { return trackRow(x, i, null, { rank: true, list: t.items }); }), { icon: "note", title: "No top tracks yet", text: "Spotify needs a bit more listening in the last " + label + "." });
     } catch (e) { errorState($("topTracks"), e, loadTop); }
   }
   async function loadWhen(force) {
@@ -963,7 +1467,8 @@
           b.setAttribute("aria-pressed", "true");
           if (!arr.length) { stateBox(hl, { icon: "chart", title: "No plays around " + hr + ":00" }); return; }
           hl.appendChild(h("div", { class: "label", text: arr.length + " plays around " + hr + ":00" }));
-          arr.forEach(function (x, i) { hl.appendChild(stagger(trackRow(x.track, i, new Date(x.played_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })), i)); });
+          var hourTracks = arr.map(function (x) { return x.track; });
+          arr.forEach(function (x, i) { hl.appendChild(stagger(trackRow(x.track, i, new Date(x.played_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }), { list: hourTracks }), i)); });
         });
         box.appendChild(b);
         setTimeout(function () { fl.style.height = (arr.length / max * 100) + "%"; }, 40 + hr * 15);
@@ -993,14 +1498,15 @@
   /* =====================================================================
      Discover
      ===================================================================== */
-  function showTracks(title, tracks) { $("disTitle").textContent = title; list($("disOut"), tracks.map(function (t, i) { return trackRow(t, i); }), { icon: "search", title: "No songs found", text: "Spotify didn’t return any matches." }); }
+  function showTracks(title, tracks) { $("disTitle").textContent = title; list($("disOut"), tracks.map(function (t, i) { return trackRow(t, i, null, { list: tracks }); }), { icon: "search", title: "No songs found", text: "Spotify didn’t return any matches." }); }
   async function runSearch() {
     var q = $("q").value.trim(); if (!q) return;
     $("disTitle").textContent = "Results for “" + q + "”"; skelList($("disOut"), 6);
     try {
       var r = await searchApi(q, "track,artist", S.limit), out = [];
       ((r.artists && r.artists.items) || []).slice(0, 3).forEach(function (a, i) { out.push(artistRow(a, i)); });
-      ((r.tracks && r.tracks.items) || []).forEach(function (t, i) { out.push(trackRow(t, i)); });
+      var found = (r.tracks && r.tracks.items) || [];
+      found.forEach(function (t, i) { out.push(trackRow(t, i, null, { list: found })); });
       list($("disOut"), out, { icon: "search", title: "No matches", text: "Try a different spelling or fewer words." });
     } catch (e) { errorState($("disOut"), e, runSearch); }
   }
@@ -1047,7 +1553,8 @@
   }
   async function savedPage(offset, limit) { var r = await api("GET", "/me/tracks?limit=" + limit + "&offset=" + Math.max(0, offset)); vault.total = r.total; return r.items || []; }
   function vaultRows(items, empty) {
-    list($("vaultOut"), items.map(function (x, i) { return trackRow(x.track, i, "Saved " + new Date(x.added_at).toLocaleDateString(undefined, { month: "short", year: "numeric" }) + " · " + byline(x.track)); }), { icon: "archive", title: empty || "Nothing here" });
+    var vTracks = items.map(function (x) { return x.track; });
+    list($("vaultOut"), items.map(function (x, i) { return trackRow(x.track, i, "Saved " + new Date(x.added_at).toLocaleDateString(undefined, { month: "short", year: "numeric" }) + " · " + byline(x.track), { list: vTracks }); }), { icon: "archive", title: empty || "Nothing here" });
   }
   async function vaultRun(kind, btn) {
     $$("#vaultChips .chip").forEach(function (c) { c.setAttribute("aria-pressed", String(c === btn)); });
@@ -1100,7 +1607,7 @@
     var total = mix.reduce(function (s, t) { return s + (t.duration_ms || 0); }, 0);
     $("djSave").hidden = !mix.length;
     list($("djOut"), mix.map(function (t, i) {
-      return trackRow(t, i, null, { extra: [{ label: "Remove from mix", icon: "minus", danger: true, fn: function () { mix = mix.filter(function (x) { return x.uri !== t.uri; }); drawMix(); return "Removed from mix"; } }] });
+      return trackRow(t, i, null, { list: mix, extra: [{ label: "Remove from mix", icon: "minus", danger: true, fn: function () { mix = mix.filter(function (x) { return x.uri !== t.uri; }); drawMix(); return "Removed from mix"; } }] });
     }), { icon: "wave", title: "Nothing found", text: "Try another mood, or add a few artists." });
     if (mix.length) $("djOut").insertBefore(h("p", { class: "cap", text: mix.length + " songs · about " + Math.round(total / 60000) + " min" }), $("djOut").firstChild);
   }
@@ -1191,7 +1698,7 @@
     if (params.get("code")) { try { await finishLogin(params.get("code"), params.get("state")); } catch (e) { show("setup"); $("clientId").value = lsGet(LS.id) || ""; setMsg(e.message || "Sign-in failed.", "bad"); return; } }
     if (tokens() && lsGet(LS.id)) {
       if (lsGet(LS.scopes) !== SCOPES) { handleAuth("Studio needs a few new permissions to show your library (playlists, albums and followed artists). Tap Connect to approve them."); return; }
-      show("app"); syncDock(); render(); goTo("home"); startPolling();
+      show("app"); syncDock(); render(); applyDiagSetting(); goTo("home"); startPolling();
       getMe().then(function (me) { $$(".js-initials").forEach(function (e) { e.textContent = initials(me); }); if (cur === "home") setHeader(); }).catch(function () {});
     } else { show("setup"); $("clientId").value = lsGet(LS.id) || ""; }
   }

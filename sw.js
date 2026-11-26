@@ -2,8 +2,8 @@
    Network-first for the app shell (revalidating past the HTTP cache) so installed copies
    pick up new releases on the next open; the cache is only an offline fallback.
    Spotify API and image traffic is never intercepted. */
-const VERSION = "studio-one-2";
-const SHELL = ["./", "index.html", "styles.css?v=one-2", "app.js?v=one-2", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-512.png"];
+const VERSION = "studio-one-3";
+const SHELL = ["./", "index.html", "styles.css?v=one-3", "app.js?v=one-3", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));

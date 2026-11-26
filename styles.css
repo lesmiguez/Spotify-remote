@@ -140,6 +140,20 @@ input[type=range]:disabled{opacity:.35}
 .note a{color:inherit;font-weight:700;margin-left:8px}
 #banner .note{margin:0 0 16px}
 
+/* pending (sent, not yet confirmed by Spotify) vs confirmed */
+.pending{animation:pend 1.1s ease-in-out infinite}
+.playbtn.pending{animation:none}
+.playbtn.pending::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid transparent;border-top-color:var(--emerald);animation:spin .8s linear infinite}
+.iconbtn:disabled,.playbtn:disabled{opacity:.32;cursor:default;animation:none}
+input[type=range].pending::-webkit-slider-thumb{box-shadow:0 0 0 4px rgba(29,185,84,.25)}
+/* diagnostics */
+.diag{display:grid;grid-template-columns:minmax(96px,auto) minmax(0,1fr);gap:6px 12px;margin:4px 0 0;font-size:12.5px}
+.diag dt{color:var(--slate)}
+.diag dd{margin:0;font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}
+.diaglog{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);display:grid;gap:4px}
+.npdiag{margin-top:22px;padding:12px;border-radius:var(--r-md);background:var(--porcelain);border:1px solid var(--line)}
+.npdiag .label{margin-top:0}
+
 /* device status dot */
 .devdot{width:8px;height:8px;flex:none;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--slate);transition:background .3s,box-shadow .3s}
 [data-dev=idle] .devdot{box-shadow:inset 0 0 0 2px var(--emerald)}
@@ -524,6 +538,7 @@ body.hero-in .toast{bottom:calc(var(--sab) + var(--tabh) + 16px)}
 @keyframes toastin{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
 @keyframes sk{to{background-position:-200% 0}}
 @keyframes eq{0%,100%{height:30%}50%{height:100%}}
+@keyframes pend{0%,100%{opacity:1}50%{opacity:.55}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes live{0%,100%{box-shadow:0 0 0 3px rgba(29,185,84,.22)}50%{box-shadow:0 0 0 5px rgba(29,185,84,.08)}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

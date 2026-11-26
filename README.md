@@ -62,3 +62,18 @@ In Safari tap **Share → Add to Home Screen**. It then opens full screen like a
 - If you used an earlier version, the app asks you to reconnect once to approve the new permissions.
 - The page only contacts `api.spotify.com` and `accounts.spotify.com` (enforced by a Content Security Policy in `index.html`).
 - Not tested against live Spotify when this was written; report anything odd.
+
+## Playback engine (v2.2)
+
+All playback goes through one `PlaybackController` in `app.js`:
+- **One state store.** The home player, mini-player, expanded player, docked panel and ambient mode all render from the same state.
+- **Confirmed state only from Spotify.** It comes only from `GET /me/player`. Responses that arrive out of order, or that started before a newer command was sent, are discarded.
+- **Serialized commands.** Commands are sent one at a time, because Spotify does not guarantee ordering across Player endpoints. Every command names the target `device_id`.
+- **Pending vs confirmed.** Taps take effect on screen immediately and are marked pending until a bounded back-off check (about 6 seconds max) confirms them. If Spotify ends up somewhere else, Spotify's state wins.
+- **Previous** restarts the track after the first 3 seconds, like the Spotify app.
+- **Lists keep their context.** Albums and playlists play in their own context from the selected track. Other lists (search, top tracks, recents, Vault, DJ, Liked Songs rows) play the visible list from the selected track.
+- **Errors and limits.** 429 `Retry-After` pauses all requests. An expired token is refreshed once. Network loss, inactive devices (falls back to the last used device), restricted devices and Spotify's `disallows` are all handled.
+- **Foreground return.** Reopening the app, returning to it, or coming back online resyncs immediately.
+- **Diagnostics.** Settings → Playback diagnostics shows the device, context, shuffle/repeat, last command and sync latency. It never shows tokens.
+
+Spotify API limits that still apply: no reordering or removal in the queue, the queue endpoint can be approximate, no Smart Shuffle control, and offsets are documented only for albums and playlists.

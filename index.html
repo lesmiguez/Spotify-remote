@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=one-2">
+<link rel="stylesheet" href="styles.css?v=one-3">
 <title>Spotify Studio</title>
 </head>
 <body>
@@ -194,6 +194,16 @@
               <div class="btnrow"><button class="btn secondary" id="changeId" type="button">Change Client ID</button><button class="btn ghost danger" id="signout" type="button">Sign out</button></div>
               <p class="fineprint">Spotify limits personal developer apps: no recommendations, artist top tracks or play counts, and 10 results per search.</p>
             </div>
+            <div class="card">
+              <div class="cardhead"><h2>Playback diagnostics</h2><div class="seg" role="group" aria-label="Playback diagnostics" id="diagSeg"></div></div>
+              <p class="cap">Live sync details for troubleshooting playback. Access tokens are never shown or copied.</p>
+              <div id="diagPanel" hidden>
+                <dl class="diag" id="diagList"></dl>
+                <div class="label">Recent commands</div>
+                <div class="diaglog" id="diagLog"></div>
+                <div class="btnrow"><button class="btn secondary sm" id="diagCopy" type="button">Copy report</button><button class="btn secondary sm" id="diagSync" type="button">Sync now</button></div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -228,6 +238,7 @@
         <div class="vol"><span data-icon="volume"></span><input id="volume" type="range" min="0" max="100" value="50" step="1" aria-label="Volume"><span id="volNote" class="cap" hidden>Use your phone’s volume buttons</span></div>
       </div>
       <div class="npq"><div class="cardhead"><h2>Up next</h2></div><div class="list" id="queueList"></div></div>
+      <div class="npdiag" id="npDiag" hidden><div class="label">Playback diagnostics</div><dl class="diag" id="npDiagList"></dl></div>
     </div>
   </aside>
 
@@ -283,6 +294,6 @@
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script src="app.js?v=one-2"></script>
+<script src="app.js?v=one-3"></script>
 </body>
 </html>
