@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=one-4">
+<link rel="stylesheet" href="styles.css?v=one-5">
 <title>Spotify Studio</title>
 </head>
 <body>
@@ -50,14 +50,16 @@
       <header class="top">
         <div class="tt"><h1 class="ptitle" id="vtitle">Home</h1><p class="psub" id="vsub"></p></div>
         <div class="topacts">
+          <button class="iconbtn searchbtn" id="searchBtn" type="button" aria-label="Search"><span data-icon="search"></span></button>
           <button class="devchip js-devopen" id="deviceBtn" type="button" aria-haspopup="dialog"><span class="devdot" aria-hidden="true"></span><span data-icon="device"></span><span class="devname js-devname">Connect</span></button>
           <button class="avatar" id="avatarBtn" type="button" aria-label="Settings"><span class="js-initials"></span></button>
         </div>
       </header>
       <div id="banner" aria-live="polite"></div>
 
-      <!-- HOME -->
+      <!-- HOME (sections are reorderable; see Settings) -->
       <section class="view" id="v-home" aria-label="Home">
+        <div class="homesec" data-sec="hero">
         <div class="hero" id="hero">
           <button class="hero-art artbox js-open" type="button" aria-label="Open player"><span class="artfb js-artfb" aria-hidden="true"></span><img class="js-art" alt="" decoding="async"></button>
           <div class="hero-body">
@@ -76,95 +78,125 @@
             </div>
           </div>
         </div>
-
-        <section class="section" aria-labelledby="hQueue">
+        </div>
+        <section class="section homesec" data-sec="modes" aria-labelledby="hModes">
+          <div class="sechead"><h2 id="hModes">Modes</h2></div>
+          <div class="modechips" id="homeModes"></div>
+        </section>
+        <section class="section homesec" data-sec="pinned" aria-labelledby="hPinned">
+          <div class="sechead"><h2 id="hPinned">Pinned</h2><div class="railnav" data-rail="homePinned"></div></div>
+          <div class="rail" id="homePinned"></div>
+        </section>
+        <section class="section homesec" data-sec="queue" aria-labelledby="hQueue">
           <div class="sechead"><h2 id="hQueue">Up next</h2><div class="railnav" data-rail="homeQueue"></div></div>
           <div class="rail" id="homeQueue"></div>
         </section>
-        <section class="section" aria-labelledby="hRecent">
+        <section class="section homesec" data-sec="recent" aria-labelledby="hRecent">
           <div class="sechead"><h2 id="hRecent">Jump back in</h2><div class="railnav" data-rail="homeRecent"></div></div>
           <div class="rail" id="homeRecent"></div>
         </section>
-        <section class="section" aria-labelledby="hArtists">
+        <section class="section homesec" data-sec="artists" aria-labelledby="hArtists">
           <div class="sechead"><h2 id="hArtists">Your artists lately</h2><div class="railnav" data-rail="homeArtists"></div></div>
           <div class="rail round" id="homeArtists"></div>
         </section>
       </section>
 
-      <!-- LIBRARY -->
+      <!-- SEARCH -->
+      <section class="view" id="v-search" aria-label="Search">
+        <div class="search big"><span data-icon="search"></span><input class="field" type="search" id="q" maxlength="120" placeholder="Songs, artists, albums, playlists" aria-label="Search Spotify and your library" enterkeyhint="search" autocomplete="off"></div>
+        <div id="searchResults" class="sresults" aria-live="polite"></div>
+        <div id="searchBrowse">
+          <section class="section" id="recentSearchSec" hidden><div class="sechead"><h2>Recent searches</h2><button class="btn ghost sm" id="clearSearches" type="button">Clear</button></div><div class="chips wrap" id="recentSearches"></div></section>
+          <section class="section"><div class="sechead"><h2 id="genreHead">Your artists</h2></div><div class="chips wrap" id="genreChips"></div></section>
+        </div>
+      </section>
+
+      <!-- LIBRARY (playlists, albums, artists, Liked Songs, pinned favourites; Vault lives in Liked Songs) -->
       <section class="view" id="v-library" aria-label="Library">
         <div id="libHome">
           <div class="libbar">
             <div class="seg" role="group" aria-label="Show" id="libSeg"></div>
-            <div class="search libsearch"><span data-icon="search"></span><input class="field" type="search" id="libFilter" maxlength="80" placeholder="Filter" aria-label="Filter your library"></div>
+            <div class="libtools">
+              <div class="search libsearch"><span data-icon="search"></span><input class="field" type="search" id="libFilter" maxlength="80" placeholder="Filter" aria-label="Filter your library"></div>
+              <select class="field sortsel" id="libSort" aria-label="Sort"><option value="recent">Recents</option><option value="az">A–Z</option><option value="creator">Creator</option></select>
+            </div>
           </div>
           <div class="tiles" id="libOut"></div>
         </div>
         <div id="libDetail" hidden>
-          <button class="backbtn" id="libBack" type="button"><span data-icon="chevL"></span><span>Library</span></button>
+          <div class="dtop">
+            <button class="backbtn" id="libBack" type="button"><span data-icon="chevL"></span><span id="libBackLbl">Library</span></button>
+            <span class="grow"></span>
+            <button class="iconbtn quiet" id="dPin" type="button" aria-label="Pin" aria-pressed="false" hidden><span data-icon="pin"></span></button>
+            <button class="iconbtn quiet" id="dMenu" type="button" aria-label="More options" hidden><span data-icon="more"></span></button>
+          </div>
           <div class="dhead">
             <span class="dart artbox" id="dArt"></span>
             <div class="dmeta">
               <div class="kick" id="dKind"></div>
               <h2 class="dtitle" id="dTitle"></h2>
               <div class="dsub" id="dSub"></div>
-              <div class="dacts"><button class="btn primary" id="dPlay" type="button"><span data-icon="play"></span>Play</button><button class="btn secondary" id="dShuffle" type="button"><span data-icon="shuffle"></span>Shuffle</button></div>
+              <div class="dacts">
+                <button class="btn primary" id="dPlay" type="button"><span data-icon="play"></span>Play</button>
+                <button class="btn secondary" id="dShuffle" type="button"><span data-icon="shuffle"></span>Shuffle</button>
+              </div>
             </div>
           </div>
-          <div class="card"><div class="list" id="dList"></div><div class="libmore"><button class="btn secondary sm" id="dMore" type="button" hidden>Load more</button></div></div>
+          <div class="likedtools" id="likedTools" hidden>
+            <div class="seg" role="group" aria-label="Sort Liked Songs" id="likedSort"></div>
+            <div class="chips" id="likedYears"></div>
+          </div>
+          <div class="card flat"><div class="list" id="dList"></div><div class="libmore"><button class="btn secondary sm" id="dMore" type="button" hidden>Load more</button></div></div>
+          <div class="section" id="dExtra"></div>
         </div>
       </section>
 
       <!-- INSIGHTS -->
       <section class="view" id="v-insights" aria-label="Insights">
-        <div class="seg" role="group" aria-label="Time range" id="range"></div>
-        <div class="cols two">
-          <div class="card"><div class="cardhead"><h2>Top artists</h2></div><div class="list" id="topArtists"></div></div>
-          <div class="card"><div class="cardhead"><h2>Top tracks</h2></div><div class="list" id="topTracks"></div></div>
-          <div class="card span" id="genreCard" hidden><div class="cardhead"><h2>Your genres</h2></div><p class="cap">From your top 50 artists. Tap a genre to see who’s in it.</p><div id="genreBars" class="bars"></div><div class="list" id="genreList"></div></div>
-          <div class="card"><div class="cardhead"><h2>When you listen</h2></div><p class="cap" id="whenNote"></p><div id="hourChart" class="hours"></div><div class="list" id="hourList"></div></div>
-          <div class="card"><div class="cardhead"><h2>Recent days</h2></div><p class="cap">Plays per day in the same sample.</p><div id="dayChart" class="hours days"></div></div>
+        <div class="insec">
+          <div class="sechead"><h2>Your history</h2><div class="seg" role="group" aria-label="History range" id="histRange"></div></div>
+          <p class="cap" id="histNote"></p>
+          <div class="stats" id="histStats"></div>
+          <div class="cols two gap-top">
+            <div class="card"><div class="cardhead"><h2>Plays per day</h2></div><div id="dayChart" class="hours days"></div></div>
+            <div class="card"><div class="cardhead"><h2>When you listen</h2></div><div id="hourChart" class="hours"></div><div class="list" id="hourList"></div></div>
+            <div class="card"><div class="cardhead"><h2>Most played artists</h2></div><div class="list" id="histArtists"></div></div>
+            <div class="card"><div class="cardhead"><h2>Most played songs</h2></div><div class="list" id="histTracks"></div></div>
+          </div>
+        </div>
+        <div class="insec">
+          <div class="sechead"><h2>Spotify’s top picks for you</h2><div class="seg" role="group" aria-label="Time range" id="range"></div></div>
+          <p class="cap">Ranked by Spotify from your listening. Spotify doesn’t share play counts.</p>
+          <div class="cols two">
+            <div class="card"><div class="cardhead"><h2>Top artists</h2></div><div class="list" id="topArtists"></div></div>
+            <div class="card"><div class="cardhead"><h2>Top tracks</h2></div><div class="list" id="topTracks"></div></div>
+            <div class="card span" id="genreCard" hidden><div class="cardhead"><h2>Your genres</h2></div><p class="cap">From your top 50 artists. Tap a genre to see who’s in it.</p><div id="genreBars" class="bars"></div><div class="list" id="genreList"></div></div>
+          </div>
         </div>
       </section>
 
-      <!-- DISCOVER -->
-      <section class="view" id="v-discover" aria-label="Discover">
-        <div class="cols aside">
-          <div class="stack sticky">
-            <div class="card"><div class="search"><span data-icon="search"></span><input class="field" type="search" id="q" maxlength="120" placeholder="Artists or songs" aria-label="Search Spotify" enterkeyhint="search"></div></div>
-            <div class="card"><div class="cardhead"><h2 id="genreHead">Your artists</h2></div><div class="chips wrap" id="genreChips"></div></div>
+      <!-- MODES -->
+      <section class="view" id="v-modes" aria-label="Modes">
+        <div class="modelist" id="modeList"></div>
+        <section class="section" aria-labelledby="hMix">
+          <div class="sechead"><h2 id="hMix">Build a mix</h2></div>
+          <div class="cols aside">
+            <div class="card sticky">
+              <div class="label" id="moodLbl">Mood</div><div class="chips wrap" id="djMood" role="group" aria-labelledby="moodLbl"></div>
+              <div class="label" id="actLbl">Activity</div><div class="chips wrap" id="djAct" role="group" aria-labelledby="actLbl"></div>
+              <label class="label" for="djLike">Artists to include</label>
+              <input class="field" type="text" id="djLike" maxlength="160" placeholder="e.g. Chris Stapleton, Tyler Childers">
+              <label class="label" for="djLen">Length</label>
+              <select class="field" id="djLen"><option value="30">30 minutes</option><option value="60" selected>1 hour</option><option value="90">90 minutes</option><option value="120">2 hours</option></select>
+              <button class="btn primary block" id="djBuild" type="button">Build mix</button>
+              <div id="djMsg"></div>
+            </div>
+            <div class="card">
+              <div class="cardhead"><h2>Your mix</h2><button class="btn primary sm" id="djSave" type="button" hidden>Save to Spotify</button></div>
+              <div class="list" id="djOut"></div>
+            </div>
           </div>
-          <div class="card"><div class="cardhead"><h2 id="disTitle">Results</h2></div><div class="list" id="disOut"></div></div>
-        </div>
-      </section>
-
-      <!-- VAULT -->
-      <section class="view" id="v-vault" aria-label="Vault">
-        <div class="cols aside">
-          <div class="card sticky"><div class="cardhead"><h2>Your library</h2></div><p class="cap" id="vaultInfo"></p><div class="chips wrap" id="vaultChips"></div></div>
-          <div class="card"><div class="cardhead"><h2 id="vaultTitle">Rediscover</h2></div><div class="list" id="vaultOut"></div></div>
-        </div>
-      </section>
-
-      <!-- DJ -->
-      <section class="view" id="v-dj" aria-label="DJ">
-        <div class="cols aside">
-          <div class="card sticky">
-            <div class="label" id="moodLbl">Mood</div><div class="chips wrap" id="djMood" role="group" aria-labelledby="moodLbl"></div>
-            <div class="label" id="actLbl">Activity</div><div class="chips wrap" id="djAct" role="group" aria-labelledby="actLbl"></div>
-            <label class="label" for="djLike">Artists to include</label>
-            <input class="field" type="text" id="djLike" maxlength="160" placeholder="e.g. Chris Stapleton, Tyler Childers">
-            <label class="label" for="djLen">Length</label>
-            <select class="field" id="djLen"><option value="30">30 minutes</option><option value="60" selected>1 hour</option><option value="90">90 minutes</option><option value="120">2 hours</option></select>
-            <button class="btn primary block" id="djBuild" type="button">Build mix</button>
-            <div id="djMsg"></div>
-            <p class="fineprint">Built from Spotify’s catalog by genre and the artists you name. Spotify doesn’t offer its recommendation engine to personal apps.</p>
-          </div>
-          <div class="card">
-            <div class="cardhead"><h2>Your mix</h2><button class="btn primary sm" id="djSave" type="button" hidden>Save to Spotify</button></div>
-            <div class="list" id="djOut"></div>
-          </div>
-        </div>
+        </section>
       </section>
 
       <!-- SETTINGS -->
@@ -179,20 +211,37 @@
               <button class="setrow js-devopen" type="button"><span data-icon="device"></span><span class="m"><span class="n">Device</span><span class="b js-devname">Connect</span></span><span data-icon="chevR"></span></button>
               <button class="setrow js-ambient" type="button"><span data-icon="ambient"></span><span class="m"><span class="n">Ambient mode</span><span class="b">Full-screen artwork, keeps the screen awake</span></span><span data-icon="chevR"></span></button>
             </div>
+            <div class="card">
+              <div class="cardhead"><h2>Home screen</h2></div>
+              <p class="cap">Choose and order the sections on Home.</p>
+              <div class="cfglist" id="homeCfg"></div>
+            </div>
+            <div class="card">
+              <div class="cardhead"><h2>Navigation</h2></div>
+              <p class="cap">Choose up to five tabs. Settings stays in the corner.</p>
+              <div class="cfglist" id="navCfg"></div>
+            </div>
           </div>
           <div class="stack">
             <div class="card">
               <div class="cardhead"><h2>Appearance</h2></div>
               <div class="seg full" role="group" aria-label="Appearance" id="themeSeg"></div>
+              <div class="label">Density</div>
+              <div class="seg full" role="group" aria-label="Density" id="densitySeg"></div>
               <label class="label" for="sLimit">Items per list</label>
               <select class="field" id="sLimit"><option>10</option><option>20</option><option>30</option></select>
+            </div>
+            <div class="card">
+              <div class="cardhead"><h2>Listening history</h2><div class="seg" role="group" aria-label="Listening history" id="histSeg"></div></div>
+              <p class="cap" id="histInfo"></p>
+              <div class="btnrow"><button class="btn ghost danger sm" id="histClear" type="button">Delete history</button></div>
             </div>
             <div class="card">
               <div class="cardhead"><h2>Connection</h2></div>
               <div class="kv"><span>Client ID</span><span class="mono" id="cidMask"></span></div>
               <div class="kv"><span>Version</span><span id="appVer"></span></div>
               <div class="btnrow"><button class="btn secondary" id="changeId" type="button">Change Client ID</button><button class="btn ghost danger" id="signout" type="button">Sign out</button></div>
-              <p class="fineprint">Spotify limits personal developer apps: no recommendations, artist top tracks or play counts, and 10 results per search.</p>
+              <p class="fineprint">Signing out deletes Studio’s on-device history and caches. Spotify limits personal developer apps: no recommendations, artist top tracks or play counts, and 10 results per search.</p>
             </div>
             <div class="card">
               <div class="cardhead"><h2>Playback diagnostics</h2><div class="seg" role="group" aria-label="Playback diagnostics" id="diagSeg"></div></div>
@@ -215,7 +264,7 @@
     <div class="npin">
       <div class="nphead">
         <button class="iconbtn" id="npClose" type="button" aria-label="Close player"><span data-icon="chevD"></span></button>
-        <button class="npctx js-devopen" type="button"><span class="devdot" aria-hidden="true"></span><span id="npCtx">No device</span></button>
+        <div class="npmid"><div class="npfrom" id="npFrom"></div><button class="npctx js-devopen" type="button"><span class="devdot" aria-hidden="true"></span><span id="npCtx">No device</span></button></div>
         <button class="iconbtn quiet js-ambient" type="button" aria-label="Ambient mode"><span data-icon="ambient"></span></button>
       </div>
       <div class="np-art artbox" id="artWrap"><span class="artfb js-artfb" aria-hidden="true"></span><img class="js-art" alt="" decoding="async"></div>
@@ -223,10 +272,11 @@
         <div class="npmeta">
           <div class="m"><div class="np-title" id="npTitle" aria-live="polite">Nothing playing</div><div class="np-artist" id="npArtist"></div></div>
           <button class="iconbtn heart" id="npSave" type="button" aria-label="Save to Liked Songs" aria-pressed="false" hidden><span data-icon="heart"></span></button>
+          <button class="iconbtn quiet" id="npMenu" type="button" aria-label="More options for this song"><span data-icon="more"></span></button>
         </div>
         <div class="scrub">
           <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" disabled>
-          <div class="times"><span id="tNow">0:00</span><span id="tLen">0:00</span></div>
+          <div class="times"><span id="tNow">0:00</span><button class="timebtn" id="tLen" type="button" aria-label="Toggle remaining time">0:00</button></div>
         </div>
         <div class="ctrls">
           <button class="iconbtn tog" id="shuffle" type="button" aria-label="Shuffle" aria-pressed="false"><span data-icon="shuffle"></span></button>
@@ -237,6 +287,7 @@
         </div>
         <div class="vol"><span data-icon="volume"></span><input id="volume" type="range" min="0" max="100" value="50" step="1" aria-label="Volume"><span id="volNote" class="cap" hidden>Use your phone’s volume buttons</span></div>
       </div>
+      <div class="npmode" id="npMode" hidden></div>
       <div class="npq"><div class="cardhead"><h2>Up next</h2></div><div class="list" id="queueList"></div></div>
       <div class="npdiag" id="npDiag" hidden><div class="label">Playback diagnostics</div><dl class="diag" id="npDiagList"></dl></div>
     </div>
@@ -273,7 +324,47 @@
   </div>
 </div>
 
+<!-- ================= Drive ================= -->
+<div id="drive" class="drive" hidden role="dialog" aria-modal="true" aria-label="Drive mode">
+  <div class="drv-top"><span class="brandmark" data-icon="logo" aria-hidden="true"></span><span class="drv-mode" id="drvMode">Drive</span><span class="grow"></span><span class="drv-clock" id="drvClock"></span><button class="iconbtn" id="drvClose" type="button" aria-label="Exit Drive mode"><span data-icon="close"></span></button></div>
+  <div class="drv-body">
+    <div class="drv-art artbox"><span class="artfb js-artfb" aria-hidden="true"></span><img class="js-art" alt="" decoding="async"></div>
+    <div class="drv-info"><div class="drv-title" id="drvTitle"></div><div class="drv-artist" id="drvArtist"></div><div class="pbar"><span id="drvBar"></span></div></div>
+  </div>
+  <div class="drv-ctrls">
+    <button class="drvbtn js-prev" type="button" aria-label="Previous track"><span data-icon="prev"></span></button>
+    <button class="drvbtn play js-play" type="button" aria-label="Play"><span class="i-play" data-icon="play"></span><span class="i-pause" data-icon="pause"></span></button>
+    <button class="drvbtn js-next" type="button" aria-label="Next track"><span data-icon="next"></span></button>
+  </div>
+</div>
+
 <!-- ================= Sheets ================= -->
+<div id="plSheet" class="sheet" hidden>
+  <div class="scrim" data-close="plSheet"></div>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="plH">
+    <div class="grab"></div>
+    <div class="cardhead"><h2 id="plH">Add to playlist</h2></div>
+    <p class="cap" id="plSub"></p>
+    <div class="list" id="plList"></div>
+  </div>
+</div>
+
+<div id="modeSheet" class="sheet" hidden>
+  <div class="scrim" data-close="modeSheet"></div>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="modeH">
+    <div class="grab"></div>
+    <div class="cardhead"><h2 id="modeH">Mode</h2></div>
+    <label class="label" for="mSource">Music</label>
+    <select class="field" id="mSource"></select>
+    <div class="label">Shuffle</div><div class="seg full" role="group" aria-label="Shuffle" id="mShuffle"></div>
+    <div class="label">Repeat</div><div class="seg full" role="group" aria-label="Repeat" id="mRepeat"></div>
+    <div class="label">Stop after</div><div class="seg full" role="group" aria-label="Timer" id="mTimer"></div>
+    <div class="label">Screen</div><div class="seg full" role="group" aria-label="Keep screen awake" id="mAwake"></div>
+    <p class="fineprint" id="modeNote"></p>
+    <div class="btnrow"><button class="btn primary" id="modeSave" type="button">Save</button><button class="btn ghost" id="modeReset" type="button">Reset</button></div>
+  </div>
+</div>
+
 <div id="devices" class="sheet" hidden>
   <div class="scrim" data-close="devices"></div>
   <div class="panel" role="dialog" aria-modal="true" aria-labelledby="devH">
@@ -298,6 +389,6 @@
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script src="app.js?v=one-4"></script>
+<script src="app.js?v=one-5"></script>
 </body>
 </html>

@@ -77,3 +77,13 @@ All playback goes through one `PlaybackController` in `app.js`:
 - **Diagnostics.** Settings → Playback diagnostics shows the device, context, shuffle/repeat, last command and sync latency. It never shows tokens.
 
 Spotify API limits that still apply: no reordering or removal in the queue, the queue endpoint can be approximate, no Smart Shuffle control, and offsets are documented only for albums and playlists.
+
+## Studio 3.0
+
+- **Navigation:** Home, Search, Library, Insights, Modes (configurable in Settings; Settings lives behind the avatar on phones and in the sidebar on wide screens). Search is also one tap away in every header (`/` or ⌘K on a keyboard).
+- **Search:** one request per query returns songs, artists, albums and playlists (Spotify allows 10 per type for personal apps), plus matches from your own library. Recent searches stay on the device.
+- **Library:** playlists, albums, artists and Liked Songs with A–Z / creator / recent sort, on-device pins (shown first and on Home), artist pages (catalog songs + releases), and the former Vault inside Liked Songs (newest, oldest, by year, surprise).
+- **Track menu:** play, queue, add to playlist (only playlists you own or collaborate on), save/remove from Liked Songs, go to album/artist, copy link, open in Spotify.
+- **Modes:** Drive, Focus, Discover, Relax — each a saved recipe of music source, shuffle, repeat, stop timer and keep-awake. Timers and keep-awake run inside Studio, so they only work while it stays open. The mix builder lives on the same screen.
+- **Insights:** optional on-device history. Spotify only exposes the last 50 plays, so Studio records what it sees (IDs, names, a small artwork URL, time, length) for 90 days, never uploads it, flags detected gaps, and deletes it on sign-out or from Settings. Spotify's own top artists/tracks remain separately labelled.
+- **Performance:** library lists and top artists render from a short-lived local cache (max 12 hours, cleared on sign-out) and refresh in the background; the playlist list is prefetched when idle.

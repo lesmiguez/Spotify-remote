@@ -49,9 +49,9 @@ async def main():
     log.clear(); await pg.click("#libSeg button >> text=Artists"); await pg.wait_for_timeout(700)
     check("artists load", has(log,"GET","/me/following?type=artist") and await pg.locator("#libOut .tile").count()==5)
     await pg.screenshot(path="lib_artists.png")
-    await pg.click("#libOut .tile >> nth=0 >> .tmain"); await pg.wait_for_timeout(600); check("artist opens songs in Discover", await pg.is_visible("#v-discover"))
+    await pg.click("#libOut .tile >> nth=0 >> .tmain"); await pg.wait_for_timeout(600); check("artist opens artist page in Library", await pg.is_visible("#libDetail") and (await pg.text_content("#dKind"))=="Artist")
     check("no page errors", not [e for e in errs if "frame-ancestors" not in e], errs)
-    check("phone: 6 tabs fit, no overflow", await pg.evaluate("document.documentElement.scrollWidth")<=390)
+    check("phone: tabs fit, no overflow", await pg.evaluate("document.documentElement.scrollWidth")<=390)
     await ctx.close()
     # error + old scopes
     ctx,pg,log,errs=await page(b,390,844,opts={"fail":"/me/playlists"})

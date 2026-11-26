@@ -5,7 +5,7 @@ BASE=os.environ.get("STUDIO_URL","http://127.0.0.1:8765/")
 SCOPES="user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-private user-top-read user-read-recently-played user-library-read user-library-modify playlist-modify-private playlist-read-private playlist-read-collaborative user-follow-read"
 def trk(i,name,artist,aid=None):
     return {"id":f"t{i}","uri":f"spotify:track:t{i}","name":name,"duration_ms":200000+i*7000,"type":"track",
-      "artists":[{"name":artist,"id":aid or "x"+artist[:3]}],"album":{"name":"Album "+str(i),"images":[{"url":f"https://i.scdn.co/image/a{i%6}","width":640}]},
+      "artists":[{"name":artist,"id":aid or "x"+artist[:3]}],"album":{"id":f"al{i}","name":"Album "+str(i),"images":[{"url":f"https://i.scdn.co/image/a{i%6}","width":640}]},
       "external_urls":{"spotify":"https://open.spotify.com/track/x"}}
 names=[("If The World Had a Front Porch","Tracy Lawrence"),("Whitehouse Road","Tyler Childers"),("Fast Car","Luke Combs"),("Something in the Orange","Zach Bryan"),("Feathered Indians","Tyler Childers"),("Starting Over","Chris Stapleton"),("Heavy Eyes","Zach Bryan"),("Dirt Road Anthem","Jason Aldean"),("Tennessee Whiskey","Chris Stapleton"),("Goodbye Time","Conway Twitty")]
 T=[trk(i,*n) for i,n in enumerate(names)]
