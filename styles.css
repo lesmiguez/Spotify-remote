@@ -163,3 +163,66 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   h1{font-size:36px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ===== Foldable tuning: cover screen (narrow) and inner screen (wide) ===== */
+
+/* Cover / folded: fit art + controls on one screen, no scrolling to reach play */
+@media (max-width:759px){
+  .art{width:min(78vw,40dvh)}
+  .stage{gap:14px}
+  h1{font-size:28px;margin-bottom:12px}
+  .title{font-size:21px}
+  .ctrls{margin:4px 0 0}
+  .playbtn{width:68px;height:68px}
+  .wrap{padding-left:calc(var(--sal) + 14px);padding-right:calc(var(--sar) + 14px)}
+  .card{padding:16px;border-radius:18px}
+  .it .acts .ab{padding:6px 9px}
+  .it .acts{gap:3px}
+}
+/* very narrow cover screens: collapse row buttons so titles stay readable */
+@media (max-width:400px){
+  .it .acts .ab:not(.pri){display:none}
+  .it .acts .ab.pri{padding:6px 12px}
+}
+
+/* Unfolded, portrait-ish (760-999): two clear columns */
+@media (min-width:760px){
+  .wrap{max-width:1180px;padding-left:28px;padding-right:28px}
+  .bar{max-width:1180px}
+  h1{margin-bottom:18px}
+
+  #v-home.on{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:28px;align-items:start}
+  #v-home .stage{grid-template-columns:1fr;gap:20px;align-items:start}
+  #v-home .art{width:min(100%,calc(100dvh - 380px),420px);min-width:220px;margin:0 auto}
+  #v-home .deck{max-width:none}
+  #v-home .grid.two{grid-template-columns:1fr;margin-top:0!important}
+
+  #v-discover.on,#v-vault.on{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px;align-items:start}
+  #v-discover .card,#v-vault .card{margin-top:0!important}
+  #v-discover .card:nth-child(3){grid-column:2;grid-row:1/span 2}
+  #v-vault .card:nth-child(2){grid-column:2;grid-row:1}
+  #v-vault .card:first-child{grid-column:1;grid-row:1}
+
+  #v-listening .grid.two{gap:16px}
+  .it .acts .ab:not(.pri){display:inline-block}
+}
+
+/* Unfolded, landscape / large inner display (1000+) */
+@media (min-width:1000px){
+  .wrap{max-width:1280px}
+  #v-home.on{gap:40px}
+  #v-home .art{width:min(100%,calc(100dvh - 340px),460px)}
+  #v-listening .grid.two{grid-template-columns:repeat(3,minmax(0,1fr))}
+  #v-listening .grid.two .span{grid-column:1/-1}
+  #v-listening .grid.two .span + .card,#v-listening .grid.two .card:not(.span){grid-column:auto}
+  #v-dj .grid.two{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}
+}
+
+/* Short landscape (cover screen turned sideways): side-by-side player */
+@media (orientation:landscape) and (max-height:520px){
+  #v-home.on{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+  #v-home .stage{grid-template-columns:150px 1fr;align-items:center;gap:16px}
+  #v-home .art{width:150px;min-width:0;margin:0}
+  #v-home .grid.two{display:none}
+  .mini{display:none}
+}
