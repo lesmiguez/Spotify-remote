@@ -4,6 +4,8 @@ One web app for Spotify: playback control without opening the Spotify app, real 
 
 Requires Spotify Premium.
 
+Design: **Studio Glass**. Light theme by default, with Dark and Automatic under Settings. Floating tab bar and mini-player when folded; sidebar, multi-panel views and a docked now-playing panel when unfolded wide. The now-playing screen tints itself from the album artwork.
+
 ## How "without opening the app" works
 
 The page sends commands to a Spotify device on your account (your phone's Spotify app, a speaker, a computer). The Spotify app on your phone must have been opened and played something recently so it shows up as a device. After that, this page controls it and does not bring the app to the foreground.
