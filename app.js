@@ -5,13 +5,13 @@
      Config — keys and scopes are unchanged so existing sign-ins and
      preferences carry over.
      ===================================================================== */
-  var APP_VERSION = "2.0 · Studio One";
+  var APP_VERSION = "2.1 · Studio One";
   var API = "https://api.spotify.com/v1";
   var ACCOUNTS = "https://accounts.spotify.com";
   var SCOPES = [
     "user-read-playback-state", "user-modify-playback-state", "user-read-currently-playing", "user-read-private",
     "user-top-read", "user-read-recently-played", "user-library-read", "user-library-modify",
-    "playlist-modify-private"
+    "playlist-modify-private", "playlist-read-private", "playlist-read-collaborative", "user-follow-read"
   ].join(" ");
   var LS = { id: "sr.clientId", tok: "sr.tokens", ver: "sr.verifier", state: "sr.state", scopes: "sr.scopes", set: "sr.settings" };
 
@@ -31,6 +31,7 @@
   var PATHS = {
     logo: '<rect class="lg-bg" width="24" height="24" rx="6.5"/><circle class="lg-ring" cx="12" cy="12" r="6.3" fill="none" stroke-width="1.8"/><path class="lg-fg" d="M10.5 9.3v5.4l4.3-2.7z"/>',
     home: '<path d="M3.5 10.5 12 3.5l8.5 7V19a1.5 1.5 0 0 1-1.5 1.5h-4v-6h-6v6H5A1.5 1.5 0 0 1 3.5 19z"/>',
+    library: '<path d="M5 4v16M9.5 4v16M14 4.5l5 15"/>',
     chart: '<path d="M5 20v-7M10 20V5M15 20v-10M20 20v-4"/>',
     compass: '<circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8z"/>',
     archive: '<rect x="3.5" y="4" width="17" height="4" rx="1"/><path d="M5 8v10.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V8M10 12h4"/>',
@@ -301,7 +302,7 @@
     main.appendChild(thumb(t));
     main.appendChild(h("span", { class: "m" }, h("span", { class: "n", text: t.name || "" }), h("span", { class: "b", text: sub || byline(t) })));
     main.appendChild(h("span", { class: "eq", "aria-hidden": "true" }, h("i"), h("i"), h("i")));
-    main.addEventListener("click", function () { playTrack(t); });
+    main.addEventListener("click", function () { if (o.play) o.play(t); else playTrack(t); });
     var more = h("button", { class: "more", type: "button", "aria-label": "More options for " + t.name }, icon("more"));
     more.addEventListener("click", function () { trackSheet(t, o.extra); });
     row.appendChild(main); row.appendChild(more);
@@ -393,8 +394,8 @@
   /* =====================================================================
      Navigation
      ===================================================================== */
-  var VIEWS = [["home", "Home", "home"], ["insights", "Insights", "chart"], ["discover", "Discover", "compass"], ["vault", "Vault", "archive"], ["dj", "DJ", "wave"], ["settings", "Settings", "settings"]];
-  var SUB = { insights: "From your Spotify history", discover: "Search and explore", vault: "Rediscover your saved songs", dj: "Build a mix for the moment", settings: "Account, playback and appearance" };
+  var VIEWS = [["home", "Home", "home"], ["library", "Library", "library"], ["insights", "Insights", "chart"], ["discover", "Discover", "compass"], ["vault", "Vault", "archive"], ["dj", "DJ", "wave"], ["settings", "Settings", "settings"]];
+  var SUB = { library: "Playlists, albums and artists", insights: "From your Spotify history", discover: "Search and explore", vault: "Rediscover your saved songs", dj: "Build a mix for the moment", settings: "Account, playback and appearance" };
   var cur = "home", loaded = {}, init = {}, refresh = {};
   VIEWS.forEach(function (v) {
     var b = h("button", { type: "button", "data-v": v[0], class: v[0] === "settings" ? "nav-settings" : null }, icon(v[2]), h("span", { text: v[1] }));
@@ -726,6 +727,181 @@
   init.home = function () { skelRail($("homeQueue"), 5); loadRecent(); loadHomeArtists(); };
   refresh.home = function () { loadQueue(); loadRecent(true); loadHomeArtists(); };
 
+
+  /* =====================================================================
+     Library: playlists (with Liked Songs), saved albums, followed artists
+     ===================================================================== */
+  var LIBTABS = [["playlists", "Playlists"], ["albums", "Albums"], ["artists", "Artists"]];
+  var LIBEMPTY = {
+    playlists: { icon: "library", title: "No playlists yet", text: "Playlists you create or follow in Spotify appear here." },
+    albums: { icon: "disc", title: "No saved albums", text: "Albums you save in Spotify appear here." },
+    artists: { icon: "person", title: "No followed artists", text: "Artists you follow in Spotify appear here." }
+  };
+  var lib = { tab: "playlists", data: {}, more: null };
+  function songs(n) { return n == null ? "" : n.toLocaleString() + (n === 1 ? " song" : " songs"); }
+  function plTotal(pl) { var x = pl.items || pl.tracks; return x && typeof x.total === "number" ? x.total : null; }
+
+  async function fetchLib(tab) {
+    var out = [];
+    if (tab === "artists") {
+      var after = null;
+      for (var i = 0; i < 4; i++) {
+        var r = await api("GET", "/me/following?type=artist&limit=50" + (after ? "&after=" + encodeURIComponent(after) : ""));
+        var a = (r && r.artists) || {}; out = out.concat((a.items || []).filter(Boolean));
+        after = a.cursors && a.cursors.after; if (!a.next || !after) break;
+      }
+      return out;
+    }
+    var path = tab === "playlists" ? "/me/playlists" : "/me/albums";
+    for (var off = 0; off < 200; off += 50) {
+      var p = await api("GET", path + "?limit=50&offset=" + off), it = (p && p.items) || [];
+      out = out.concat(tab === "albums" ? it.map(function (x) { return x && x.album; }).filter(Boolean) : it.filter(Boolean));
+      if (it.length < 50 || !p.next) break;
+    }
+    return out;
+  }
+  function skelGrid(t, n) { clear(t); for (var i = 0; i < (n || 8); i++) t.appendChild(h("div", { class: "sktile", "aria-hidden": "true" }, h("span", { class: "sk a" }), h("span", { class: "sk l" }), h("span", { class: "sk l2" }))); t.setAttribute("aria-busy", "true"); }
+  function libTile(o, title, sub, onClick, opts) {
+    opts = opts || {};
+    var w = h("div", { class: "tile" + (opts.round ? " round" : "") });
+    var art = h("span", { class: "tart" + (opts.liked ? " liked" : "") });
+    if (opts.liked) art.innerHTML = svg("heart"); else art.appendChild(thumb(o, opts.round, 300));
+    var b = h("button", { class: "tmain", type: "button", "aria-label": "Open " + title }, art, h("span", { class: "tn", text: title }), h("span", { class: "tb", text: sub }));
+    b.addEventListener("click", onClick);
+    w.appendChild(b);
+    return w;
+  }
+  async function loadLibTab(force) {
+    var t = lib.tab, box = $("libOut");
+    if (lib.data[t] && !force) { drawLib(); return; }
+    box.className = "tiles" + (t === "artists" ? " round" : ""); skelGrid(box, 8);
+    try { var d = await fetchLib(t); lib.data[t] = d; if (lib.tab === t) drawLib(); }
+    catch (e) { if (lib.tab === t) errorState(box, e, function () { loadLibTab(true); }); }
+  }
+  function drawLib() {
+    var t = lib.tab, box = $("libOut"), q = $("libFilter").value.trim().toLowerCase(), items = lib.data[t] || [];
+    box.className = "tiles" + (t === "artists" ? " round" : "");
+    var match = function (o) {
+      if (!q) return true;
+      var hay = [o.name, o.owner && o.owner.display_name, byline(o)].join(" ").toLowerCase();
+      return hay.indexOf(q) > -1;
+    };
+    var tiles = [];
+    if (t === "playlists" && (!q || "liked songs".indexOf(q) > -1)) tiles.push(libTile(null, "Liked Songs", "Your saved songs", openLiked, { liked: true }));
+    items.filter(match).forEach(function (o) {
+      if (t === "playlists") { var n = plTotal(o); tiles.push(libTile(o, o.name, [o.owner && o.owner.display_name, n != null ? songs(n) : ""].filter(Boolean).join(" · ") || "Playlist", function () { openPlaylist(o); })); }
+      else if (t === "albums") tiles.push(libTile(o, o.name, byline(o) || "Album", function () { openAlbum(o); }));
+      else tiles.push(libTile(o, o.name, "Artist", function () { artistTop(o); }, { round: true }));
+    });
+    var empty = q ? { icon: "search", title: "No matches", text: "Nothing in your " + t + " matches “" + q + "”." } : LIBEMPTY[t];
+    if (t === "playlists" && !items.length && !q) { list(box, tiles, empty); box.appendChild(h("div", { class: "state" }, h("div", { class: "st-x", text: LIBEMPTY.playlists.text }))); return; }
+    list(box, tiles, empty);
+  }
+
+  /* detail page */
+  var detail = { ctx: null };
+  function openDetail(kind, title, sub, artObj, opts) {
+    opts = opts || {};
+    $("libHome").hidden = true; $("libDetail").hidden = false;
+    setText("dKind", kind); setText("dTitle", title); setText("dSub", sub || "");
+    var art = $("dArt"); clear(art); art.className = "dart artbox" + (opts.liked ? " liked" : "");
+    if (opts.liked) art.innerHTML = svg("heart");
+    else {
+      var u = imgOf(artObj, 300);
+      if (u) { var im = h("img", { alt: "", decoding: "async" }); im.onload = function () { im.classList.add("on"); }; im.src = u; art.appendChild(im); }
+      else { var fb = h("span", { class: "artfb" }); fb.innerHTML = svg(opts.round ? "person" : "note"); art.appendChild(fb); }
+    }
+    detail.ctx = opts.ctx || null;
+    $("dPlay").disabled = $("dShuffle").disabled = !detail.ctx;
+    $("dMore").hidden = true; lib.more = null;
+    skelList($("dList"), 8);
+    window.scrollTo(0, 0);
+  }
+  function closeDetail() { $("libDetail").hidden = true; $("libHome").hidden = false; detail.ctx = null; lib.more = null; }
+  async function playContext(ctx, offsetUri, shuffle) {
+    if (!st.device) { openDevices(); toast("Choose a device first"); return; }
+    try {
+      if (shuffle != null) await api("PUT", "/me/player/shuffle?state=" + (shuffle ? "true" : "false"));
+      var body = { context_uri: ctx }; if (offsetUri) body.offset = { uri: offsetUri };
+      await api("PUT", "/me/player/play", body); setTimeout(poll, 600);
+      toast(shuffle ? "Shuffling" : "Playing");
+    } catch (e) { if (e.auth) return handleAuth(); if (e.status === 404) openDevices(); toast(explain(e), true); }
+  }
+  $("dPlay").addEventListener("click", function () { if (detail.ctx) playContext(detail.ctx); });
+  $("dShuffle").addEventListener("click", function () { if (detail.ctx) playContext(detail.ctx, null, true); });
+  $("dMore").addEventListener("click", function () { if (lib.more) lib.more(); });
+  $("libBack").addEventListener("click", closeDetail);
+
+  /* paged track list shared by Liked Songs, owned playlists and albums */
+  function pagedTracks(fetchPage, mapItem, ctx, emptyOpts) {
+    var rows = [], offset = 0, token = {}; detail.token = token;
+    async function next() {
+      var btn = $("dMore"); btn.disabled = true; btn.textContent = "Loading…";
+      try {
+        var r = await fetchPage(offset); if (detail.token !== token) return;
+        var items = (r && r.items) || [];
+        items.map(mapItem).filter(function (x) { return x && x.t && x.t.uri && (!x.t.type || x.t.type === "track"); }).forEach(function (x) {
+          rows.push(trackRow(x.t, rows.length, x.sub, { play: function (t) { playContext(ctx, t.uri); } }));
+        });
+        offset += items.length;
+        if (offset === items.length) list($("dList"), rows.slice(), emptyOpts);
+        else rows.slice(-items.length).forEach(function (r2, i) { $("dList").appendChild(stagger(r2, i)); });
+        var more = r && r.total != null ? offset < r.total : items.length === 50;
+        btn.hidden = !more || !items.length; lib.more = more ? next : null;
+      } catch (e) {
+        if (detail.token !== token) return;
+        if (!rows.length) errorState($("dList"), e, next); else toast(explain(e), true);
+      }
+      btn.disabled = false; btn.textContent = "Load more";
+    }
+    next();
+  }
+  async function openLiked() {
+    openDetail("Playlist", "Liked Songs", "", null, { liked: true });
+    try {
+      var me = await getMe(), ctx = "spotify:user:" + me.id + ":collection"; detail.ctx = ctx;
+      $("dPlay").disabled = $("dShuffle").disabled = false;
+      pagedTracks(function (off) {
+        return api("GET", "/me/tracks?limit=50&offset=" + off).then(function (r) { if (r && r.total != null) setText("dSub", songs(r.total)); return r; });
+      }, function (x) { return x && x.track ? { t: x.track, sub: byline(x.track) } : null; }, ctx, { icon: "heart", title: "No liked songs yet", text: "Tap the heart on any song to save it here." });
+    } catch (e) { errorState($("dList"), e, openLiked); }
+  }
+  async function openPlaylist(pl) {
+    var n = plTotal(pl);
+    openDetail("Playlist", pl.name, [pl.owner && pl.owner.display_name, n != null ? songs(n) : ""].filter(Boolean).join(" · "), pl, { ctx: pl.uri });
+    var me = null; try { me = await getMe(); } catch (e) {}
+    var mine = pl.collaborative || (me && pl.owner && pl.owner.id === me.id);
+    if (!mine) {
+      stateBox($("dList"), { icon: "library", title: "Song list not available", text: "Spotify only shares the songs in playlists you own or collaborate on. You can still play or shuffle this playlist." });
+      return;
+    }
+    pagedTracks(function (off) { return api("GET", "/playlists/" + encodeURIComponent(pl.id) + "/items?limit=50&offset=" + off); },
+      function (x) { var t = x && (x.item || x.track); return t ? { t: t } : null; }, pl.uri,
+      { icon: "library", title: "This playlist is empty", text: "Add songs to it in Spotify." });
+  }
+  function openAlbum(al) {
+    var yr = al.release_date ? String(al.release_date).slice(0, 4) : "", n = al.total_tracks || (al.tracks && al.tracks.total);
+    openDetail("Album", al.name, [byline(al), yr, n ? songs(n) : ""].filter(Boolean).join(" · "), al, { ctx: al.uri });
+    var first = al.tracks && al.tracks.items;
+    var withAlbum = function (t) { if (t && !t.album) t.album = { name: al.name, images: al.images }; return t; };
+    pagedTracks(function (off) {
+      if (off === 0 && first && first.length) return Promise.resolve({ items: first, total: al.tracks.total });
+      return api("GET", "/albums/" + encodeURIComponent(al.id) + "/tracks?limit=50&offset=" + off);
+    }, function (t) { return t ? { t: withAlbum(t), sub: byline(t) } : null; }, al.uri, { icon: "disc", title: "No tracks", text: "Spotify didn’t return this album’s tracks." });
+  }
+
+  init.library = function () {
+    var seg = $("libSeg");
+    LIBTABS.forEach(function (tb, i) {
+      var b = h("button", { type: "button", "aria-pressed": String(tb[0] === lib.tab), text: tb[1] });
+      b.addEventListener("click", function () { if (lib.tab === tb[0]) return; lib.tab = tb[0]; $$("button", seg).forEach(function (x, j) { x.setAttribute("aria-pressed", String(j === i)); }); $("libFilter").value = ""; loadLibTab(); });
+      seg.appendChild(b);
+    });
+    $("libFilter").addEventListener("input", drawLib);
+    loadLibTab();
+  };
+  refresh.library = function () { if (!$("libDetail").hidden) { closeDetail(); return; } loadLibTab(true); };
+
   /* =====================================================================
      Insights
      ===================================================================== */
@@ -1014,7 +1190,7 @@
     if (params.get("error")) { history.replaceState(null, "", redirectUri()); show("setup"); $("clientId").value = lsGet(LS.id) || ""; setMsg(params.get("error") === "access_denied" ? "Spotify access was declined." : "Spotify returned an error: " + params.get("error"), "bad"); return; }
     if (params.get("code")) { try { await finishLogin(params.get("code"), params.get("state")); } catch (e) { show("setup"); $("clientId").value = lsGet(LS.id) || ""; setMsg(e.message || "Sign-in failed.", "bad"); return; } }
     if (tokens() && lsGet(LS.id)) {
-      if (lsGet(LS.scopes) !== SCOPES) { handleAuth("Studio needs a few new permissions (listening history, library and playlists). Tap Connect to approve them."); return; }
+      if (lsGet(LS.scopes) !== SCOPES) { handleAuth("Studio needs a few new permissions to show your library (playlists, albums and followed artists). Tap Connect to approve them."); return; }
       show("app"); syncDock(); render(); goTo("home"); startPolling();
       getMe().then(function (me) { $$(".js-initials").forEach(function (e) { e.textContent = initials(me); }); if (cur === "home") setHeader(); }).catch(function () {});
     } else { show("setup"); $("clientId").value = lsGet(LS.id) || ""; }

@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=one-1">
+<link rel="stylesheet" href="styles.css?v=one-2">
 <title>Spotify Studio</title>
 </head>
 <body>
@@ -89,6 +89,30 @@
           <div class="sechead"><h2 id="hArtists">Your artists lately</h2><div class="railnav" data-rail="homeArtists"></div></div>
           <div class="rail round" id="homeArtists"></div>
         </section>
+      </section>
+
+      <!-- LIBRARY -->
+      <section class="view" id="v-library" aria-label="Library">
+        <div id="libHome">
+          <div class="libbar">
+            <div class="seg" role="group" aria-label="Show" id="libSeg"></div>
+            <div class="search libsearch"><span data-icon="search"></span><input class="field" type="search" id="libFilter" maxlength="80" placeholder="Filter" aria-label="Filter your library"></div>
+          </div>
+          <div class="tiles" id="libOut"></div>
+        </div>
+        <div id="libDetail" hidden>
+          <button class="backbtn" id="libBack" type="button"><span data-icon="chevL"></span><span>Library</span></button>
+          <div class="dhead">
+            <span class="dart artbox" id="dArt"></span>
+            <div class="dmeta">
+              <div class="kick" id="dKind"></div>
+              <h2 class="dtitle" id="dTitle"></h2>
+              <div class="dsub" id="dSub"></div>
+              <div class="dacts"><button class="btn primary" id="dPlay" type="button"><span data-icon="play"></span>Play</button><button class="btn secondary" id="dShuffle" type="button"><span data-icon="shuffle"></span>Shuffle</button></div>
+            </div>
+          </div>
+          <div class="card"><div class="list" id="dList"></div><div class="libmore"><button class="btn secondary sm" id="dMore" type="button" hidden>Load more</button></div></div>
+        </div>
       </section>
 
       <!-- INSIGHTS -->
@@ -259,6 +283,6 @@
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script src="app.js?v=one-1"></script>
+<script src="app.js?v=one-2"></script>
 </body>
 </html>

@@ -233,6 +233,29 @@ input[type=range]:disabled{opacity:.35}
 .rail > .state .btn{margin:0 0 0 auto}
 .rail > .state .st-x{max-width:none}
 
+/* library */
+.libbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;margin-bottom:18px}
+.libsearch{flex:1;min-width:180px}
+.libsearch .field{height:36px;font-size:15px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:20px 14px}
+.tiles > .state{grid-column:1/-1}
+.tiles .tile{scroll-snap-align:none}
+.tart.liked,.dart.liked{background:var(--emerald);color:var(--on-emerald);display:grid;place-items:center}
+.tart.liked .ic,.dart.liked .ic{width:36%;height:36%;fill:currentColor}
+.backbtn{display:inline-flex;align-items:center;gap:2px;height:36px;padding:0 10px 0 2px;margin:0 0 12px -8px;border:0;background:none;color:var(--emerald-ink);font:600 15px var(--font);border-radius:8px}
+.backbtn .ic{width:22px;height:22px}
+.dhead{display:grid;grid-template-columns:116px minmax(0,1fr);gap:16px;align-items:end;margin-bottom:18px}
+.dart{width:100%;aspect-ratio:1;border-radius:var(--r-sm);box-shadow:var(--sh-art)}
+.dmeta{min-width:0}
+.kick{font:600 11.5px var(--font);color:var(--slate);text-transform:uppercase;letter-spacing:.06em}
+.dtitle{font:700 22px/1.2 var(--font-d);letter-spacing:-.02em;margin:3px 0 2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.dsub{font-size:13.5px;color:var(--slate);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dacts{display:flex;gap:8px;margin-top:12px}
+.dacts .btn{height:38px;padding:0 16px;font-size:14px}
+.dacts .ic{width:17px;height:17px}
+.libmore{display:flex;justify-content:center}
+.libmore .btn{margin-top:12px}
+
 /* charts */
 .bars{display:flex;flex-direction:column;gap:2px}
 .bar{display:grid;grid-template-columns:minmax(84px,34%) 1fr 24px;gap:12px;align-items:center;border:0;background:none;padding:6px 0;text-align:left;border-radius:6px}
@@ -424,6 +447,9 @@ body.hero-in .toast{bottom:calc(var(--sab) + var(--tabh) + 16px)}
   .rail{grid-auto-columns:152px;margin:0;padding:2px 0 6px;scroll-padding:0}
   .rail.round{grid-auto-columns:120px}
   .rail > .state{width:auto}
+  .tiles{grid-template-columns:repeat(auto-fill,minmax(152px,1fr));gap:24px 18px}
+  .dhead{grid-template-columns:180px minmax(0,1fr);gap:22px}
+  .dtitle{font-size:28px}
 }
 @container main (min-width:900px){
   .rail{grid-auto-columns:164px;gap:18px}
