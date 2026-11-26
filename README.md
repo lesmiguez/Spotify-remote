@@ -1,6 +1,6 @@
-# Spotify Remote
+# Spotify Studio
 
-A small web app that controls Spotify playback (play, pause, skip, seek, volume, shuffle, repeat, device switching, queue) from your phone without opening the Spotify app. It talks to Spotify's Web API directly using Authorization Code with PKCE. There is no server and no backend, and no secret is stored anywhere.
+One web app for Spotify: playback control without opening the Spotify app, real listening analytics (top artists and tracks, genres, listening by hour), discovery, a vault of your oldest saved songs, and a DJ that builds playlists and saves them to Spotify. It talks to Spotify's Web API directly using Authorization Code with PKCE. There is no server and no backend, and no secret is stored anywhere.
 
 Requires Spotify Premium.
 
@@ -54,6 +54,9 @@ In Safari tap **Share → Add to Home Screen**. It then opens full screen like a
 ## Notes
 - Development-mode Spotify apps only work for accounts you add under **User Management** in the dashboard. Your own account is the owner, so you are covered.
 - Tokens live in this browser's local storage on your device. **Sign out** (three-dot menu) clears them. Revoke access any time at https://www.spotify.com/account/apps/
-- Scopes requested: read playback state, control playback, read currently playing, read account type. Nothing else.
+- Scopes requested: playback state and control, currently playing, account type, top items, recently played, library read/write (Save buttons), and private playlist creation. Nothing else.
+- Spotify only shares your 50 most recent plays, so the hour-of-day and recent-days charts are a sample, not full history.
+- Spotify removed recommendation tools for new apps, so the DJ builds mixes from genre search and your chosen artists.
+- If you used an earlier version, the app asks you to reconnect once to approve the new permissions.
 - The page only contacts `api.spotify.com` and `accounts.spotify.com` (enforced by a Content Security Policy in `index.html`).
 - Not tested against live Spotify when this was written; report anything odd.

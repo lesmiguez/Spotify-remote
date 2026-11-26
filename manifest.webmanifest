@@ -1,6 +1,6 @@
 {
-  "name": "Spotify Remote",
-  "short_name": "Remote",
+  "name": "Spotify Studio",
+  "short_name": "Studio",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
