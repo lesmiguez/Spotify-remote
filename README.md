@@ -4,7 +4,7 @@ One web app for Spotify: playback control without opening the Spotify app, real 
 
 Requires Spotify Premium.
 
-Design: **Studio Glass**. Light theme by default, with Dark and Automatic under Settings. Floating tab bar and mini-player when folded; sidebar, multi-panel views and a docked now-playing panel when unfolded wide. The now-playing screen tints itself from the album artwork.
+Design: **Studio One** (Carbon, Emerald, Canvas, Porcelain, Slate). Light by default, Dark or Automatic in Settings. Bottom tab bar and mini-player when folded; compact sidebar, multi-panel pages and a persistent now-playing panel on wide screens. Optional ambient mode (full-screen artwork, keeps the screen awake where supported).
 
 ## How "without opening the app" works
 
