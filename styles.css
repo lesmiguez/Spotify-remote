@@ -427,8 +427,16 @@ body.np-open{overflow:hidden}
 .scrim{position:absolute;inset:0;background:rgba(9,11,10,.36);animation:fade .25s var(--ease)}
 .panel{position:relative;width:100%;max-width:520px;max-height:85dvh;overflow:auto;background:var(--porcelain);border-radius:var(--r-xl) var(--r-xl) 0 0;padding:8px calc(var(--sar) + 18px) calc(var(--sab) + 18px) calc(var(--sal) + 18px);box-shadow:var(--sh-2);animation:up .42s var(--spring)}
 .grab{width:36px;height:5px;border-radius:9px;background:var(--line-2);margin:0 auto 14px}
+.devrow{display:flex;align-items:center;gap:4px}
+.devrow + .devrow{box-shadow:inset 0 1px 0 var(--line)}
+.devrow .dev{flex:1;min-width:0}
+.devedit .ic{width:18px;height:18px}
+.devform{display:flex;gap:8px;align-items:center;width:100%;padding:8px 0}
+.devform .field{flex:1;min-width:0}
+.devhint{margin-top:8px}
+.devhint .btn{margin-top:10px}
 .dev{display:flex;align-items:center;gap:12px;width:calc(100% + 16px);margin:0 -8px;min-height:60px;padding:8px;border:0;background:none;border-radius:var(--r-sm);text-align:left;color:inherit}
-.dev + .dev{box-shadow:inset 0 1px 0 var(--line)}
+
 @media (hover:hover){.dev:hover{background:var(--fill)}}
 .dev > .ico{width:38px;height:38px;border-radius:10px;background:var(--fill);color:var(--ink-2)}
 .dev > .ico .ic{width:20px;height:20px}

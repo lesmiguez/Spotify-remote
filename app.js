@@ -5,7 +5,7 @@
      Config — keys and scopes are unchanged so existing sign-ins and
      preferences carry over.
      ===================================================================== */
-  var APP_VERSION = "2.2 · Studio One (playback 2)";
+  var APP_VERSION = "2.3 · Studio One";
   var API = "https://api.spotify.com/v1";
   var ACCOUNTS = "https://accounts.spotify.com";
   var SCOPES = [
@@ -63,6 +63,7 @@
     refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
     ambient: '<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M8 15l3-3.5 2.5 2.5 1.5-1.5L17 15"/>',
     expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/>',
+    pencil: '<path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-4-4L4 16z"/><path d="M14 6l4 4"/>',
     close: '<path d="M6 6l12 12M18 6 6 18"/>',
     disc: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/>'
   };
@@ -483,6 +484,29 @@
   }
 
   /* =====================================================================
+     Device names. Spotify sometimes reports a device's ID as its name
+     (common with Echo / Cast speakers). Show a readable label instead and
+     let the user give it a nickname, stored on this device only.
+     ===================================================================== */
+  var NICK = {};
+  try { NICK = JSON.parse(lsGet("sr.deviceNames") || "{}") || {}; } catch (e) { NICK = {}; }
+  function unnamed(dev) {
+    var n = ((dev && dev.name) || "").trim();
+    return !n || n === dev.id || /^[0-9a-f]{16,}$/i.test(n) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(n);
+  }
+  function devName(dev) {
+    if (!dev) return "";
+    if (dev.id && NICK[dev.id]) return NICK[dev.id];
+    if (unnamed(dev)) return "Unnamed " + String(dev.type || "device").toLowerCase();
+    return dev.name;
+  }
+  function setNick(id, name) {
+    name = (name || "").trim().slice(0, 40);
+    if (name) NICK[id] = name; else delete NICK[id];
+    lsSet("sr.deviceNames", JSON.stringify(NICK));
+  }
+
+  /* =====================================================================
      PlaybackController
      The single owner of playback state. Every surface (home, mini-player,
      expanded player, ambient, rows) renders from PB.view().
@@ -675,7 +699,7 @@
       waiting.splice(waiting.indexOf(cmd), 1);
       running = cmd;
       var rec = cmd.rec, attempt = 0, devRetry = false, usedFallback = false, req = cmd.build(cmd.value);
-      rec.status = "sending"; rec.device = req.deviceName || (s.device && s.device.name) || null; diagChanged();
+      rec.status = "sending"; rec.device = req.deviceName || (s.device && devName(s.device)) || null; diagChanged();
       var t0 = now();
       lastSentSerial = cmd.serial;
       try {
@@ -909,9 +933,9 @@
       if (!dev || !dev.id) return;
       var keepPlaying = view().playing || !s.device;
       return enqueue({
-        key: "device", label: "Switch to " + dev.name, value: dev, keys: ["device"], deviceRetry: false,
+        key: "device", label: "Switch to " + devName(dev), value: dev, keys: ["device"], deviceRetry: false,
         optimistic: function () { setPending("device", { id: dev.id, name: dev.name, type: dev.type, volume_percent: dev.volume_percent, supports_volume: dev.supports_volume }); },
-        build: function () { return { method: "PUT", path: "/me/player", body: { device_ids: [dev.id], play: keepPlaying }, deviceName: dev.name }; },
+        build: function () { return { method: "PUT", path: "/me/player", body: { device_ids: [dev.id], play: keepPlaying }, deviceName: devName(dev) }; },
         expect: function (st) { return !!(st.device && st.device.id === dev.id); },
         after: function () { refreshQueue(300); }
       });
@@ -952,15 +976,15 @@
     root.setAttribute("data-dev", dev);
     var title = it ? it.name : "Nothing playing", artist = it ? byline(it) : "";
     setText("npTitle", title); setText("npArtist", artist || (v.device ? "Press play to start" : "Connect a device to start listening"));
-    setText("heroTitle", title); setText("heroArtist", artist || (v.device ? "Ready on " + v.device.name : "Choose a device to start listening"));
-    setText("miniTitle", title); setText("miniArtist", artist || (v.device ? "Ready on " + v.device.name : "Tap to connect a device"));
+    setText("heroTitle", title); setText("heroArtist", artist || (v.device ? "Ready on " + devName(v.device) : "Choose a device to start listening"));
+    setText("miniTitle", title); setText("miniArtist", artist || (v.device ? "Ready on " + devName(v.device) : "Tap to connect a device"));
     setText("ambTitle", title); setText("ambArtist", artist);
     var switching = pend.indexOf("device") > -1;
-    var dname = v.device ? v.device.name : "Connect";
+    var dname = v.device ? devName(v.device) : "Connect";
     $$(".js-devname").forEach(function (e) { if (e.textContent !== dname) e.textContent = dname; });
-    setText("npCtx", v.device ? (switching ? "Switching to " : dev === "live" ? "Playing on " : "Connected to ") + v.device.name : "Connect a device");
-    setText("heroKicker", v.device ? (switching ? "Switching to " : dev === "live" ? "Now playing on " : "Paused on ") + v.device.name : "Not connected");
-    $("deviceBtn").setAttribute("aria-label", v.device ? "Device: " + v.device.name + (switching ? ", switching" : dev === "live" ? ", playing" : ", paused") : "Connect a device");
+    setText("npCtx", v.device ? (switching ? "Switching to " : dev === "live" ? "Playing on " : "Connected to ") + devName(v.device) : "Connect a device");
+    setText("heroKicker", v.device ? (switching ? "Switching to " : dev === "live" ? "Now playing on " : "Paused on ") + devName(v.device) : "Not connected");
+    $("deviceBtn").setAttribute("aria-label", v.device ? "Device: " + devName(v.device) + (switching ? ", switching" : dev === "live" ? ", playing" : ", paused") : "Connect a device");
     var pp = pend.indexOf("playing") > -1;
     $$(".js-play").forEach(function (b) {
       b.setAttribute("aria-label", v.playing ? "Pause" : "Play");
@@ -1029,7 +1053,7 @@
     var v = PB.view(), d = PB.diag, c = d.cmds[0], y = d.syncs[0];
     return {
       version: APP_VERSION,
-      device: v.device ? { name: v.device.name, type: v.device.type, id: shortId(v.device.id), active: !!v.device.is_active, restricted: !!v.device.is_restricted, volume: v.device.supports_volume !== false ? v.device.volume_percent : "unsupported" } : null,
+      device: v.device ? { name: devName(v.device), reportedName: unnamed(v.device) ? "(Spotify sent an ID)" : v.device.name, type: v.device.type, id: shortId(v.device.id), active: !!v.device.is_active, restricted: !!v.device.is_restricted, volume: v.device.supports_volume !== false ? v.device.volume_percent : "unsupported" } : null,
       playing: v.playing, item: v.item ? { name: v.item.name, uri: v.item.uri } : null, position: fmt(v.position) + " / " + fmt(v.item && v.item.duration_ms || 0),
       context: v.context ? { type: v.context.type, uri: v.context.uri } : null,
       shuffle: v.shuffle, repeat: v.repeat, pending: v.pending,
@@ -1181,24 +1205,53 @@
      Devices
      ===================================================================== */
   function devIcon(type) { return type === "Computer" ? "computer" : type === "Smartphone" ? "device" : "speaker"; }
-  function openDevices() { if ($("devices").hidden) openSheet("devices"); loadDevices(); }
-  async function loadDevices() {
-    var box = $("devList"); skelList(box, 2);
+  function openDevices() { if ($("devices").hidden) openSheet("devices"); loadDevices(); watchDevices(); }
+  async function loadDevices(quiet) {
+    var box = $("devList");
+    if (!quiet || !box.querySelector(".devrow")) skelList(box, 2);
     try {
       var d = await api("GET", "/me/player/devices"), l = (d && d.devices) || [];
       clear(box); box.removeAttribute("aria-busy");
-      if (!l.length) { stateBox(box, { icon: "device", title: "No devices found", text: "Open Spotify on your phone, speaker or computer, play something briefly, then refresh.", action: { label: "Refresh", fn: loadDevices } }); return; }
-      l.forEach(function (dev) {
-        var b = h("button", { type: "button", class: "dev" + (dev.is_active ? " on" : "") }, icon(devIcon(dev.type)), h("span", { class: "m" }, h("span", { class: "n", text: dev.name }), h("span", { class: "b", text: dev.is_restricted ? "Can’t be controlled from other apps" : dev.is_active ? (PB.view().playing ? "Playing" : "Connected") : dev.type })), dev.is_active ? icon("check") : null);
-        if (dev.is_active) b.lastChild.classList.add("tick");
-        b.addEventListener("click", async function () {
-          if (dev.is_active || dev.is_restricted) { closeSheet("devices"); if (dev.is_restricted) toast("That device can’t be controlled from other apps.", true); return; }
-          closeSheet("devices"); var ok = await PB.transfer(dev); if (ok !== false) toast("Connecting to " + dev.name + "…");
-        });
-        box.appendChild(b);
-      });
-    } catch (e) { errorState(box, e, loadDevices); }
+      var hasPhone = l.some(function (x) { return x.type === "Smartphone"; });
+      $("devPhoneHint").hidden = hasPhone;
+      if (!l.length) { stateBox(box, { icon: "device", title: "No devices found", text: "Open Spotify on your phone, speaker or computer and play something briefly. This list refreshes on its own." }); return; }
+      l.forEach(function (dev) { box.appendChild(deviceRow(dev)); });
+    } catch (e) { errorState(box, e, function () { loadDevices(); }); }
   }
+  function deviceRow(dev) {
+    var row = h("div", { class: "devrow" });
+    var sub = dev.is_restricted ? "Can’t be controlled from other apps"
+      : dev.is_active ? (PB.view().playing ? "Playing" : "Connected")
+      : unnamed(dev) && !NICK[dev.id] ? dev.type + " · Spotify didn’t share its name" : dev.type;
+    var b = h("button", { type: "button", class: "dev" + (dev.is_active ? " on" : "") }, icon(devIcon(dev.type)), h("span", { class: "m" }, h("span", { class: "n", text: devName(dev) }), h("span", { class: "b", text: sub })), dev.is_active ? icon("check") : null);
+    if (dev.is_active) b.lastChild.classList.add("tick");
+    b.addEventListener("click", async function () {
+      if (dev.is_active || dev.is_restricted) { closeSheet("devices"); if (dev.is_restricted) toast("That device can’t be controlled from other apps.", true); return; }
+      closeSheet("devices"); var ok = await PB.transfer(dev); if (ok !== false) toast("Connecting to " + devName(dev) + "…");
+    });
+    var ed = h("button", { type: "button", class: "iconbtn quiet devedit", "aria-label": "Name " + devName(dev) }, icon("pencil"));
+    ed.addEventListener("click", function () {
+      var inp = h("input", { class: "field devname-input", type: "text", maxlength: "40", value: NICK[dev.id] || (unnamed(dev) ? "" : dev.name), placeholder: "e.g. Kitchen Echo", "aria-label": "Device name" });
+      var save = h("button", { type: "button", class: "btn primary sm", text: "Save" });
+      var form = h("div", { class: "devform" }, inp, save);
+      var done = function () { setNick(dev.id, inp.value); row.replaceWith(deviceRow(dev)); render(); };
+      save.addEventListener("click", done);
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") done(); if (e.key === "Escape") row.replaceWith(deviceRow(dev)); });
+      row.replaceChildren(form); inp.focus(); inp.select();
+    });
+    row.appendChild(b); row.appendChild(ed);
+    return row;
+  }
+  /* while the picker is open, keep the list fresh so a phone appears as soon as Spotify wakes on it */
+  var devTimer = null, devTicks = 0;
+  function watchDevices() {
+    clearInterval(devTimer); devTicks = 0;
+    devTimer = setInterval(function () {
+      if ($("devices").hidden || ++devTicks > 15) { clearInterval(devTimer); return; }
+      if (!document.hidden && !document.querySelector(".devform")) loadDevices(true);
+    }, 4000);
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && !$("devices").hidden) { loadDevices(true); watchDevices(); } });
   $$(".js-devopen").forEach(function (b) { b.addEventListener("click", openDevices); });
   $("devRefresh").addEventListener("click", loadDevices);
 

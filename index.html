@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=one-3">
+<link rel="stylesheet" href="styles.css?v=one-4">
 <title>Spotify Studio</title>
 </head>
 <body>
@@ -280,7 +280,11 @@
     <div class="grab"></div>
     <div class="cardhead"><h2 id="devH">Connect to a device</h2><button class="iconbtn quiet" id="devRefresh" type="button" aria-label="Refresh devices"><span data-icon="refresh"></span></button></div>
     <div class="list" id="devList"></div>
-    <p class="fineprint">Don’t see your phone? Open the Spotify app, play a song for a second, then come back and refresh.</p>
+    <div class="devhint" id="devPhoneHint" hidden>
+      <p class="fineprint">Your phone only shows up while the Spotify app is awake. Open it, play any song for a second, then come back. This list refreshes on its own.</p>
+      <a class="btn secondary sm" href="spotify:" id="openSpotify">Open Spotify</a>
+    </div>
+    <p class="fineprint">Some speakers (Echo, Cast) report an ID instead of a name. Tap the pencil to name them on this device.</p>
   </div>
 </div>
 
@@ -294,6 +298,6 @@
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script src="app.js?v=one-3"></script>
+<script src="app.js?v=one-4"></script>
 </body>
 </html>

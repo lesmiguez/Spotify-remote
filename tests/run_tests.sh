@@ -11,3 +11,4 @@ cd tests
 python3 playback_tests.py
 python3 controls.py
 python3 libtest.py
+python3 devtest.py
