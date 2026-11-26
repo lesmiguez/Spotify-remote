@@ -42,7 +42,9 @@ async def main():
     await pg.click("#libBack"); await pg.wait_for_timeout(500)
     check("artist page back returns to Home", await pg.is_visible("#v-home"))
     # back home, scroll, mini
-    await pg.click('#navItems [data-v="home"]'); await pg.evaluate("window.scrollTo(0,900)"); await pg.wait_for_timeout(500)
+    await pg.click('#navItems [data-v="home"]'); await pg.wait_for_timeout(300)
+    check("folded: now-playing card is compact (art beside the title)", await pg.evaluate("(()=>{const a=document.querySelector('.hero .hero-art').getBoundingClientRect(),t=document.getElementById('heroTitle').getBoundingClientRect();return a.width<=120 && t.left>a.right})()"))
+    await pg.evaluate("document.querySelector('.main').style.paddingBottom='1200px'; window.scrollTo(0,900)"); await pg.wait_for_timeout(500)
     check("mini visible after scrolling past hero", "hero-in" not in (await pg.get_attribute("body","class") or ""))
     log.clear(); await pg.click("#mini .js-play"); await pg.wait_for_timeout(300); check("mini play toggles", has(log,"PUT","/me/player/play") or has(log,"PUT","/me/player/pause"), log)
     log.clear(); await pg.click("#mini .js-next"); await pg.wait_for_timeout(300); check("mini next", has(log,"POST","/me/player/next"))
@@ -178,6 +180,8 @@ async def main():
     for w,hh in [(390,844),(844,390),(820,1000),(1280,800)]:
         ctx,pg,log,errs=await page(b,w,hh)
         ow=await pg.evaluate("document.documentElement.scrollWidth"); check(f"{w}x{hh}: no horizontal overflow", ow<=w, ow)
+        if (w,hh)==(820,1000):
+            check("unfolded: persistent player + queue beside content, no mini player", await pg.is_visible("#np .js-play") and await pg.is_visible("#queueList") and not await pg.is_visible("#mini") and await pg.is_visible("#navItems"))
         await ctx.close()
     await b.close()
   print(f"\n{sum(1 for _,o in results if o)}/{len(results)} passed")

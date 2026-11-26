@@ -5,7 +5,7 @@
      Config — keys and scopes are unchanged so existing sign-ins and
      preferences carry over.
      ===================================================================== */
-  var APP_VERSION = "3.1 · Studio One";
+  var APP_VERSION = "3.2 · Studio One";
   var API = "https://api.spotify.com/v1";
   var ACCOUNTS = "https://accounts.spotify.com";
   var SCOPES = [
@@ -519,7 +519,7 @@
   }
   function setHeader() {
     if (cur === "home") {
-      var g = greeting(), narrow = window.innerWidth < 480, i = g.indexOf(", ");
+      var g = greeting(), narrow = ($("main").clientWidth || window.innerWidth) < 600, i = g.indexOf(", ");
       setText("vtitle", narrow && i > 0 ? g.slice(0, i) : g);
       setText("vsub", (narrow && i > 0 ? g.slice(i + 2) + " · " : "") + new Date().toLocaleDateString(undefined, { weekday: "long", month: narrow ? "short" : "long", day: "numeric" }));
     }
@@ -539,6 +539,7 @@
     window.scrollTo(0, 0);
   }
   $("avatarBtn").addEventListener("click", function () { goTo("settings"); });
+  var hdrT = null; window.addEventListener("resize", function () { clearTimeout(hdrT); hdrT = setTimeout(setHeader, 150); });
   $("searchBtn").addEventListener("click", function () { goTo("search"); setTimeout(function () { $("q").focus(); }, 60); });
   document.addEventListener("keydown", function (e) {
     var typing = /INPUT|SELECT|TEXTAREA/.test((e.target && e.target.tagName) || "");
@@ -1283,7 +1284,7 @@
   /* =====================================================================
      Expanded player (sheet on phones, docked panel on wide screens)
      ===================================================================== */
-  var dockMq = window.matchMedia("(min-width:1100px)");
+  var dockMq = window.matchMedia("(min-width:720px) and (min-height:540px)");
   function docked() { return dockMq.matches; }
   function syncDock() {
     var np = $("np");

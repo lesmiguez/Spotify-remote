@@ -27,7 +27,7 @@ async def settled(pg, sim, timeout=7000, queue=False):
         await pg.wait_for_timeout(150)
     return False, {"ui": u, "sim": {"cur": nm(sim), "playing": sim.playing, "shuffle": sim.shuffle, "repeat": sim.repeat}}
 async def open_np(pg):
-    if await pg.evaluate("matchMedia('(min-width:1100px)').matches"): return
+    if await pg.evaluate("matchMedia('(min-width:720px) and (min-height:540px)').matches"): return
     if await pg.evaluate("document.body.classList.contains('hero-in')"): await pg.click(".hero .hero-art")
     else: await pg.click("#miniOpen")
     await pg.wait_for_timeout(600)

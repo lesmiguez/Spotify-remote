@@ -20,7 +20,7 @@
   --np-bg:hsl(var(--art-h) calc(var(--art-s) * .35%) 96.5%);
 
   --r-xs:8px; --r-sm:10px; --r-md:14px; --r-lg:16px; --r-xl:20px;
-  --tabh:56px; --minih:60px; --railw:80px; --dock:360px;
+  --tabh:56px; --minih:60px; --railw:76px; --dock:clamp(300px,34vw,380px); --gx:16px;
   --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px); --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
   --ease:cubic-bezier(.2,.8,.2,1); --spring:cubic-bezier(.32,.72,0,1);
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",Roboto,sans-serif;
@@ -483,7 +483,7 @@ body.hero-in .toast{bottom:calc(var(--sab) + var(--tabh) + 16px)}
 }
 
 /* ---------------------------------------------------------------- unfolded: compact rail */
-@media (min-width:760px){
+@media (min-width:720px){
   .app{display:grid;grid-template-columns:calc(var(--railw) + var(--sal)) minmax(0,1fr)}
   .nav{position:sticky;top:0;left:auto;right:auto;bottom:auto;height:100dvh;display:flex;flex-direction:column;align-items:center;gap:20px;padding:calc(var(--sat) + 18px) 8px calc(var(--sab) + 16px) calc(var(--sal) + 8px);border-top:0;border-right:1px solid var(--line)}
   .nav .brandmark{display:block}
@@ -513,7 +513,7 @@ body.hero-in .toast{bottom:calc(var(--sab) + var(--tabh) + 16px)}
 }
 
 /* ---------------------------------------------------------------- wide: rail + content + persistent now playing */
-@media (min-width:1100px){
+@media (min-width:720px) and (min-height:540px){
   .app{grid-template-columns:calc(var(--railw) + var(--sal)) minmax(0,1fr) var(--dock)}
   .np{position:sticky;top:0;inset:auto;height:100dvh;z-index:1;transform:none;visibility:visible;transition:background .8s var(--ease);border-left:1px solid var(--line)}
   .np .npin{display:flex;flex-direction:column;max-width:none;min-height:100%;padding:calc(var(--sat) + 18px) calc(var(--sar) + 22px) 24px 22px}
@@ -650,11 +650,82 @@ body:has(#drive:not([hidden])) .toast{background:#fff;color:#101312}
   .drv-art{width:min(34vw,52dvh)}
   .drv-info{flex:1;min-width:0}
 }
-@media (min-width:1100px){
+@media (min-width:720px) and (min-height:540px){
   .nphead .npmid{justify-self:start;align-items:flex-start}
 }
-@media (min-width:760px){
+@media (min-width:720px){
   .homesec .modechips{margin:0;padding:0}
+}
+
+
+/* ---------------------------------------------------------------- exterior / folded: dense, one-handed */
+@media (max-width:719.98px){
+  :root{--tabh:52px;--minih:56px;--gx:14px}
+  /* safe areas: use the inset itself plus a small gutter, never inset + full padding */
+  .main{padding:calc(var(--sat) + 8px) max(var(--gx), calc(var(--sar) + 6px)) calc(var(--sab) + var(--tabh) + var(--minih) + 24px) max(var(--gx), calc(var(--sal) + 6px))}
+  .nav{padding:0 max(4px, var(--sar)) var(--sab) max(4px, var(--sal))}
+  .mini{left:max(8px, calc(var(--sal) + 4px));right:max(8px, calc(var(--sar) + 4px));bottom:calc(var(--sab) + var(--tabh) + 6px)}
+  .top{min-height:40px;margin:2px 0 12px}
+  .ptitle{font-size:22px}
+  .psub{font-size:13px}
+  .section{margin-top:20px}
+  .sechead{margin-bottom:8px}
+  .sechead h2{font-size:16px}
+  .rail{grid-auto-columns:116px;gap:12px;margin:0 calc(-1 * var(--gx));padding:2px var(--gx) 4px;scroll-padding:0 var(--gx)}
+  .rail.round{grid-auto-columns:92px}
+  .tart{margin-bottom:6px}
+  .tiles{grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:14px 10px}
+  .itmain{min-height:54px;padding:6px 8px;gap:10px}
+  .thumb{width:40px;height:40px}
+  .it + .it::before{left:58px}
+  .card{padding:14px}
+  .libbar{margin-bottom:12px}
+  .homesec .modechips{margin:0 calc(-1 * var(--gx));padding:0 var(--gx)}
+  .modebtn{height:38px}
+
+  /* compact horizontal now-playing card instead of full-width artwork */
+  .hero{grid-template-columns:104px minmax(0,1fr);align-items:center;gap:12px;padding:10px;border-radius:var(--r-lg)}
+  .hero-art,[data-dev=off] .hero-art{width:104px;max-width:none;margin:0;border-radius:var(--r-sm)}
+  .kicker{font-size:11.5px;margin-bottom:2px}
+  .hero-title{font-size:17px}
+  .hero-artist{font-size:13.5px;margin-top:0}
+  .hero-prog{margin-top:8px}
+  .hero-prog .times{display:none}
+  .hero-ctrls{margin-top:4px;gap:2px}
+  .hero-ctrls .playbtn{width:46px;height:46px}
+  .hero-ctrls .quiet{display:none}
+  [data-dev=off] .hero-ctrls{margin-top:8px}
+
+  /* expanded player sheet: art sized to the short exterior screen */
+  .npin{padding:calc(var(--sat) + 4px) max(16px, calc(var(--sar) + 6px)) calc(var(--sab) + 16px) max(16px, calc(var(--sal) + 6px))}
+  .np-art{max-width:min(100%,40dvh);margin:8px auto 16px}
+  .np-title{font-size:19px}
+  .ctrls{margin:2px 0 6px}
+  .npq{margin-top:18px}
+}
+/* exterior held sideways: two-up player, no wasted height */
+@media (orientation:landscape) and (max-height:539.98px){
+  .main{padding-top:calc(var(--sat) + 10px)}
+  .top{margin-bottom:10px}
+  .hero{grid-template-columns:120px minmax(0,1fr);align-items:center;gap:16px;padding:10px 14px}
+  .hero-art,[data-dev=off] .hero-art{width:120px;max-width:none;margin:0}
+  .hero-title{font-size:19px}
+  .hero-prog{margin-top:8px}
+  .hero-ctrls{margin-top:4px}
+}
+@media (max-width:719.98px) and (orientation:landscape){
+  .hero{grid-template-columns:88px minmax(0,1fr)}
+  .hero-art,[data-dev=off] .hero-art{width:88px}
+}
+
+/* ---------------------------------------------------------------- interior / unfolded: rail + content + persistent player and queue */
+@media (min-width:720px) and (min-height:540px){
+  .main{padding:calc(var(--sat) + 18px) 22px calc(var(--sab) + 28px) 22px}
+  .top{margin:0 0 16px}
+  .np .npin{padding:calc(var(--sat) + 14px) max(18px, calc(var(--sar) + 8px)) calc(var(--sab) + 18px) 18px}
+  .np-art{margin:6px 0 16px}
+  .npq{margin-top:18px}
+  .rail{grid-auto-columns:140px}
 }
 
 /* ---------------------------------------------------------------- motion */
