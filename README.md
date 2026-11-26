@@ -87,3 +87,13 @@ Spotify API limits that still apply: no reordering or removal in the queue, the 
 - **Modes:** Drive, Focus, Discover, Relax — each a saved recipe of music source, shuffle, repeat, stop timer and keep-awake. Timers and keep-awake run inside Studio, so they only work while it stays open. The mix builder lives on the same screen.
 - **Insights:** optional on-device history. Spotify only exposes the last 50 plays, so Studio records what it sees (IDs, names, a small artwork URL, time, length) for 90 days, never uploads it, flags detected gaps, and deletes it on sign-out or from Settings. Spotify's own top artists/tracks remain separately labelled.
 - **Performance:** library lists and top artists render from a short-lived local cache (max 12 hours, cleared on sign-out) and refresh in the background; the playlist list is prefetched when idle.
+
+## Claude DJ (3.1)
+
+The DJ runs as a **Claude-hosted artifact** ("Studio DJ", linked from Modes → Claude DJ), not on GitHub Pages:
+
+- **Claude Sonnet on your Claude plan.** AI-powered artifacts call Claude with the viewer's own subscription allowance; there is no API key and nothing is billed separately. GitHub Pages has no supported way to do this (that would require the paid API).
+- **Spotify's official Claude connector supplies the taste data** (search, recommendations, listening history, library). Studio's own Spotify connection never sends anything to Claude, because Spotify's Developer Policy (III.14) prohibits ingesting Spotify Content from an app's Web API into an AI model.
+- **Memory** (loves, not for me, never play, moments, notes; discovery, energy and autonomy sliders) is stored privately for your Claude account in the artifact's database, and is editable on the page.
+- **Playback:** the connector can't start playback, and artifacts can't call the Web API. So the DJ hands Studio a set as `#dj=<base64url JSON>` (Play in Studio / Add to queue) or via the clipboard (Copy for app → Studio → Paste set). Studio validates the track IDs and plays them through the same playback engine.
+- `tests/djtest.py` covers the Studio side: link, cold start, queue mode, paste, hostile payloads, and the signed-out hand-off.

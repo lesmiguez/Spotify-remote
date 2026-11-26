@@ -670,3 +670,18 @@ body:has(#drive:not([hidden])) .toast{background:#fff;color:#101312}
 @keyframes live{0%,100%{box-shadow:0 0 0 3px rgba(29,185,84,.22)}50%{box-shadow:0 0 0 5px rgba(29,185,84,.08)}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
+
+/* Claude DJ */
+.djcard .djtop{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.djmark{width:44px;height:44px;flex:none;border-radius:12px;background:var(--carbon);color:var(--emerald);display:grid;place-items:center}
+.djmark .ic{width:24px;height:24px}
+.djdir{margin:18px 0 10px;padding-top:16px;border-top:1px solid var(--line)}
+.djsettitle{font:700 22px/1.15 var(--font-d);letter-spacing:-.02em;margin:6px 0 4px}
+#djList{margin-top:10px}
+.quickmix > summary{list-style:none;cursor:pointer}
+.quickmix > summary::-webkit-details-marker{display:none}
+.quickmix > summary .ic{width:20px;height:20px;color:var(--slate);transition:transform .2s}
+.quickmix[open] > summary .ic{transform:rotate(180deg)}
+a.btn{text-decoration:none}
+.djcard .djtop .b{white-space:normal}
+.djsec{margin-top:0;margin-bottom:28px}

@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=one-5">
+<link rel="stylesheet" href="styles.css?v=one-6">
 <title>Spotify Studio</title>
 </head>
 <body>
@@ -177,9 +177,28 @@
 
       <!-- MODES -->
       <section class="view" id="v-modes" aria-label="Modes">
+        <section class="section djsec" aria-labelledby="hDj">
+          <div class="sechead"><h2 id="hDj">Claude DJ</h2></div>
+          <div class="card djcard">
+            <div class="djtop">
+              <span class="djmark" data-icon="wave" aria-hidden="true"></span>
+              <div class="m"><div class="n" id="djTitle">Your personal DJ</div><div class="b" id="djSub">Powered by Claude Sonnet on your Claude plan. Plans sessions from your Spotify taste and remembers what you tell it.</div></div>
+            </div>
+            <div class="btnrow">
+              <a class="btn primary" id="djOpen" href="#" target="_blank" rel="noopener"><span data-icon="open"></span>Open Claude DJ</a>
+              <button class="btn secondary" id="djPaste" type="button">Paste set</button>
+            </div>
+            <div id="djSetBox" hidden>
+              <div class="djdir"><div class="kick">Current set</div><div class="djsettitle" id="djSetTitle"></div><p class="cap" id="djSetNote"></p></div>
+              <div class="btnrow"><button class="btn primary sm" id="djPlay" type="button"><span data-icon="play"></span>Play set</button><button class="btn secondary sm" id="djQueue" type="button"><span data-icon="queue"></span>Add to queue</button></div>
+              <div class="list" id="djList"></div>
+            </div>
+            <p class="fineprint">The DJ runs in a Claude-hosted page and reads your taste through Spotify’s official Claude connector. Studio only plays the set it hands over; Studio never sends your Spotify data to Claude.</p>
+          </div>
+        </section>
         <div class="modelist" id="modeList"></div>
-        <section class="section" aria-labelledby="hMix">
-          <div class="sechead"><h2 id="hMix">Build a mix</h2></div>
+        <details class="section quickmix" aria-labelledby="hMix">
+          <summary class="sechead"><h2 id="hMix">Quick mix without AI</h2><span data-icon="chevD"></span></summary>
           <div class="cols aside">
             <div class="card sticky">
               <div class="label" id="moodLbl">Mood</div><div class="chips wrap" id="djMood" role="group" aria-labelledby="moodLbl"></div>
@@ -196,7 +215,7 @@
               <div class="list" id="djOut"></div>
             </div>
           </div>
-        </section>
+        </details>
       </section>
 
       <!-- SETTINGS -->
@@ -389,6 +408,6 @@
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script src="app.js?v=one-5"></script>
+<script src="app.js?v=one-6"></script>
 </body>
 </html>

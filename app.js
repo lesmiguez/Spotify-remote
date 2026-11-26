@@ -5,7 +5,7 @@
      Config — keys and scopes are unchanged so existing sign-ins and
      preferences carry over.
      ===================================================================== */
-  var APP_VERSION = "3.0 · Studio One";
+  var APP_VERSION = "3.1 · Studio One";
   var API = "https://api.spotify.com/v1";
   var ACCOUNTS = "https://accounts.spotify.com";
   var SCOPES = [
@@ -282,7 +282,7 @@
   function cacheAge(key) { var e = memCache[key]; return e ? Date.now() - e.t : Infinity; }
   function clearLocalData() {
     memCache = {};
-    try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf("sr.c:") === 0 || k === "sr.hist" || k === "sr.pins" || k === "sr.searches") localStorage.removeItem(k); }); } catch (e) {}
+    try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf("sr.c:") === 0 || k === "sr.hist" || k === "sr.pins" || k === "sr.searches" || k === "sr.djset" || k === "sr.djpending") localStorage.removeItem(k); }); } catch (e) {}
   }
   /* stale-while-revalidate: render cached data now, then fresh data when it arrives */
   async function swr(key, maxFresh, fetcher, render) {
@@ -1139,6 +1139,7 @@
   var fromPending = {};
   function drawFrom(v) {
     var el = $("npFrom"), c = v.context;
+    if (v.item && (!c || !c.uri) && djSet && djSet.tracks.some(function (t) { return t.uri === v.item.uri; })) { el.hidden = false; el.textContent = "Playing from Claude DJ · " + djSet.title; return; }
     if (!v.item || !c || !c.uri) { el.textContent = ""; el.hidden = true; return; }
     var kind = /:collection$/.test(c.uri) ? "Liked Songs" : c.type === "playlist" ? "playlist" : c.type === "album" ? "album" : c.type === "artist" ? "artist" : "";
     if (/:collection$/.test(c.uri)) ctxNames[c.uri] = "Liked Songs";
@@ -2248,6 +2249,86 @@
   })();
 
   /* =====================================================================
+     Claude DJ handoff. The DJ runs as a Claude-hosted artifact (Claude Sonnet on the
+     user's Claude plan, Spotify's official Claude connector for taste). It hands Studio
+     a set as #dj=<base64url JSON>; Studio validates it and plays it through PB.
+     Nothing flows from Studio's Spotify connection to Claude.
+     ===================================================================== */
+  var DJ_URL = "https://claude.ai/artifact/4RLgYQrpQx7szUE5ijzdWg";
+  var djSet = null;
+  try { djSet = JSON.parse(lsGet("sr.djset") || "null"); } catch (e) { djSet = null; }
+  function parseDj(str) {
+    var m = String(str || "").match(/#dj=([A-Za-z0-9_-]{10,12000})/) || String(str || "").match(/^([A-Za-z0-9_-]{10,12000})$/);
+    if (!m) return null;
+    try {
+      var b = m[1].replace(/-/g, "+").replace(/_/g, "/"); while (b.length % 4) b += "=";
+      var o = JSON.parse(decodeURIComponent(escape(atob(b))));
+      if (!o || o.v !== 1 || !Array.isArray(o.k)) return null;
+      var tracks = o.k.filter(function (x) { return Array.isArray(x) && /^[A-Za-z0-9]{22}$/.test(x[0]); }).slice(0, 50).map(function (x) {
+        return { id: x[0], uri: "spotify:track:" + x[0], name: String(x[1] || "").slice(0, 120), type: "track", duration_ms: +x[3] || 0, artists: [{ name: String(x[2] || "").slice(0, 120) }], album: { images: [] } };
+      });
+      if (!tracks.length) return null;
+      return { title: String(o.t || "Claude DJ set").slice(0, 80), note: String(o.n || "").slice(0, 240), mode: o.m === "queue" ? "queue" : "play", tracks: tracks, at: Date.now() };
+    } catch (e) { return null; }
+  }
+  function storeDj(set) { djSet = set; lsSet("sr.djset", JSON.stringify(set)); drawDj(); }
+  function drawDj() {
+    var a = $("djOpen"); if (a) a.href = DJ_URL;
+    var box = $("djSetBox"); if (!box) return;
+    box.hidden = !djSet;
+    if (!djSet) return;
+    setText("djSetTitle", djSet.title); setText("djSetNote", djSet.note);
+    list($("djList"), djSet.tracks.map(function (t, i) { return trackRow(t, i, null, { play: function (x) { PB.play({ uris: djSet.tracks.map(function (y) { return y.uri; }), offsetUri: x.uri, track: x, label: "Claude DJ" }); } }); }), "");
+  }
+  async function runDj(set, mode) {
+    if (!set) return;
+    if (mode === "queue") {
+      var n = 0;
+      for (var i = 0; i < Math.min(set.tracks.length, 20); i++) { var ok = await PB.addToQueue(set.tracks[i]); if (ok === false) break; n++; }
+      if (n) toast("Added " + n + " songs from “" + set.title + "” to the queue");
+      return;
+    }
+    var r = await PB.play({ uris: set.tracks.map(function (t) { return t.uri; }), track: set.tracks[0], label: "Claude DJ · " + set.title });
+    if (r !== false) toast("Playing “" + set.title + "”");
+  }
+  function acceptDj(set, autoplay) {
+    storeDj(set);
+    goTo("modes");
+    if (autoplay) runDj(set, set.mode);
+  }
+  $("djPlay").addEventListener("click", function () { runDj(djSet, "play"); });
+  $("djQueue").addEventListener("click", function () { runDj(djSet, "queue"); });
+  $("djPaste").addEventListener("click", async function () {
+    var txt = "";
+    try { txt = await navigator.clipboard.readText(); } catch (e) { toast("Studio couldn’t read the clipboard. Use Play in Studio in the DJ instead.", true); return; }
+    var set = parseDj(txt);
+    if (!set) { toast("No DJ set on the clipboard. In the DJ, tap Copy for app first.", true); return; }
+    acceptDj(set, true);
+  });
+  /* incoming link: take the set out of the address so a reload doesn't replay it */
+  function takeDjFromUrl() {
+    if (location.hash.indexOf("#dj=") !== 0) return null;
+    var set = parseDj(location.hash);
+    history.replaceState(null, "", location.pathname + location.search);
+    return set;
+  }
+  var djIncoming = takeDjFromUrl();
+  if (djIncoming) lsSet("sr.djpending", JSON.stringify(djIncoming));
+  function applyPendingDj() {
+    var p = null; try { p = JSON.parse(lsGet("sr.djpending") || "null"); } catch (e) {}
+    if (!p) return; lsDel("sr.djpending");
+    if (Date.now() - (p.at || 0) > 30 * 60000) return;
+    /* wait for the first confirmed player state so the set goes to the right device */
+    Promise.resolve(PB.sync("dj")).catch(function () {}).then(function () { acceptDj(p, true); });
+  }
+  /* Studio already open: a new DJ link only changes the hash */
+  window.addEventListener("hashchange", function () {
+    var set = takeDjFromUrl(); if (!set) return;
+    if (tokens() && !$("app").hidden) acceptDj(set, true); else lsSet("sr.djpending", JSON.stringify(set));
+  });
+  drawDj();
+
+  /* =====================================================================
      Mix builder (formerly DJ)
      ===================================================================== */
   var MOODS = { Calm: ["acoustic", "chill", "singer-songwriter"], Energized: ["rock", "dance pop", "pop rock"], Nostalgic: ["classic rock", "oldies", "country classics"], Focused: ["instrumental", "ambient", "lo-fi"], Happy: ["pop", "reggae", "feel-good"], Moody: ["indie", "alternative", "blues"], Romantic: ["r&b", "soul", "love songs"], Confident: ["hip hop", "rap", "trap"] };
@@ -2417,6 +2498,7 @@
       show("app"); syncDock(); render(); applyDiagSetting(); goTo("home"); startPolling();
       /* warm the library cache when idle so search and menus respond instantly */
       setTimeout(function () { libData("playlists").catch(function () {}); }, 2500);
+      setTimeout(applyPendingDj, 600);
       getMe().then(function (me) { $$(".js-initials").forEach(function (e) { e.textContent = initials(me); }); if (cur === "home") setHeader(); }).catch(function () {});
     } else { show("setup"); $("clientId").value = lsGet(LS.id) || ""; }
   }

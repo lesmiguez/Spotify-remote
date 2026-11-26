@@ -106,6 +106,7 @@ async def main():
     # dj
     await pg.click('#navItems [data-v="modes"]'); await pg.wait_for_timeout(500)
     check("modes listed", await pg.locator("#modeList .moderow").count()==4)
+    await pg.click(".quickmix > summary"); await pg.wait_for_timeout(200)
     await pg.click("#djMood .chip >> text=Calm"); await pg.click("#djAct .chip >> text=Driving"); await pg.fill("#djLike","Chris Stapleton")
     log.clear(); await pg.click("#djBuild"); await pg.wait_for_timeout(2500)
     check("dj build searches genres + artist", any('genre%3A' in u for m,u in log) and any('artist%3A' in u for m,u in log))
