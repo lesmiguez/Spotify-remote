@@ -67,7 +67,7 @@
       <section class="view" id="v-listening" aria-label="Listening">
         <div class="seg" role="group" aria-label="Time range" id="range"></div>
         <div class="cols two gap-top">
-          <div class="card span"><h2>Your genres</h2><p class="cap">From your top 50 artists. Tap a genre to see who’s in it.</p><div id="genreBars" class="bars"></div><div id="genreList"></div></div>
+          <div class="card span" id="genreCard" hidden><h2>Your genres</h2><p class="cap">From your top 50 artists. Tap a genre to see who’s in it.</p><div id="genreBars" class="bars"></div><div id="genreList"></div></div>
           <div class="card"><h2>Top artists</h2><div id="topArtists"></div></div>
           <div class="card"><h2>Top tracks</h2><div id="topTracks"></div></div>
           <div class="card"><h2>When you listen</h2><p class="cap" id="whenNote"></p><div id="hourChart" class="hours"></div><div id="hourList"></div></div>
@@ -80,7 +80,7 @@
         <div class="cols aside">
           <div class="stack sticky">
             <div class="card"><h2>Search</h2><div class="search"><span data-icon="search"></span><input class="field" type="search" id="q" maxlength="120" placeholder="Artists, songs" aria-label="Search Spotify" enterkeyhint="search"></div></div>
-            <div class="card"><h2>Explore your genres</h2><div class="chips wrap" id="genreChips"></div></div>
+            <div class="card"><h2 id="genreHead">Explore your genres</h2><div class="chips wrap" id="genreChips"></div></div>
           </div>
           <div class="card"><h2 id="disTitle">Results</h2><div id="disOut"><p class="empty">Search, or tap one of your genres.</p></div></div>
         </div>

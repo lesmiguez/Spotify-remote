@@ -178,7 +178,7 @@
   function explain(e) {
     if (e.status === 404 || e.reason === "NO_ACTIVE_DEVICE") { openDevices(); return "No active device. Pick one to play on."; }
     if (e.reason === "PREMIUM_REQUIRED") return "Spotify Premium is required to control playback.";
-    if (e.status === 403) return "Spotify refused this request. " + (e.message || "");
+    if (e.status === 403) return "Spotify doesn’t allow this for personal developer apps.";
     if (e.status === 429) return "Spotify is rate limiting. Wait a few seconds.";
     return e.message || "That didn’t work.";
   }
@@ -217,7 +217,7 @@
     var items = [
       { label: "Play now", icon: "play", fn: function () { return playUri(t.uri).then(function () { return "Playing " + t.name; }); } },
       { label: "Add to queue", icon: "queue", fn: function () { return api("POST", "/me/player/queue?uri=" + encodeURIComponent(t.uri)).then(function () { setTimeout(loadQueue, 600); return "Added to queue"; }); } },
-      { label: "Save to Liked Songs", icon: "heart", fn: function () { return api("PUT", "/me/tracks?ids=" + encodeURIComponent(t.id)).then(function () { return "Saved to Liked Songs"; }); } }
+      { label: "Save to Liked Songs", icon: "heart", fn: function () { return api("PUT", "/me/library?uris=" + encodeURIComponent(t.uri)).then(function () { return "Saved to Liked Songs"; }); } }
     ];
     return items.concat(extra || []);
   }
@@ -265,8 +265,8 @@
   }
   async function artistTop(a) {
     goTo("discover");
-    $("disTitle").textContent = "Top songs by " + a.name; skel($("disOut"), 5);
-    try { var r = await api("GET", "/artists/" + a.id + "/top-tracks?market=" + (await marketOf())); showTracks("Top songs by " + a.name, r.tracks || []); }
+    $("disTitle").textContent = "Songs by " + a.name; skel($("disOut"), 5);
+    try { showTracks("Songs by " + a.name, await artistTracks(a, 20)); }
     catch (e) { fail($("disOut"), e); }
   }
   function markNow() {
@@ -443,14 +443,14 @@
     if (!it || !it.id || it.type === "episode") { b.hidden = true; return; }
     b.hidden = false; b.setAttribute("aria-pressed", "false"); b.setAttribute("aria-label", "Save to Liked Songs");
     try {
-      var r = await api("GET", "/me/tracks/contains?ids=" + encodeURIComponent(it.id));
+      var r = await api("GET", "/me/library/contains?uris=" + encodeURIComponent(it.uri));
       if (st.item && st.item.id === it.id) { var on = !!(r && r[0]); b.setAttribute("aria-pressed", String(on)); b.setAttribute("aria-label", on ? "Remove from Liked Songs" : "Save to Liked Songs"); }
     } catch (e) { if (e.auth) return handleAuth(); }
   }
   $("npSave").addEventListener("click", async function () {
     var it = st.item, b = this; if (!it) return;
     var on = b.getAttribute("aria-pressed") === "true"; b.setAttribute("aria-pressed", String(!on));
-    try { await api(on ? "DELETE" : "PUT", "/me/tracks?ids=" + encodeURIComponent(it.id)); toast(on ? "Removed from Liked Songs" : "Saved to Liked Songs"); b.setAttribute("aria-label", on ? "Save to Liked Songs" : "Remove from Liked Songs"); }
+    try { await api(on ? "DELETE" : "PUT", "/me/library?uris=" + encodeURIComponent(it.uri)); toast(on ? "Removed from Liked Songs" : "Saved to Liked Songs"); b.setAttribute("aria-label", on ? "Save to Liked Songs" : "Remove from Liked Songs"); }
     catch (e) { b.setAttribute("aria-pressed", String(on)); if (e.auth) return handleAuth(); toast(explain(e), true); }
   });
 
@@ -597,6 +597,7 @@
     var counts = {};
     topArtistsCache.forEach(function (a) { (a.genres || []).forEach(function (g) { counts[g] = (counts[g] || 0) + 1; }); });
     var e = Object.keys(counts).map(function (g) { return [g, counts[g]]; }).sort(function (a, b) { return b[1] - a[1] || a[0].localeCompare(b[0]); }).slice(0, 8);
+    $("genreCard").hidden = !e.length;
     bars($("genreBars"), e, function (g) { drawGenres(sel === g ? null : g); }, sel);
     var gl = $("genreList"); clear(gl);
     if (sel) {
@@ -605,14 +606,14 @@
     }
   }
   async function loadTop() {
-    var rk = RANGES[rng][1]; skel($("topArtists")); skel($("topTracks")); skel($("genreBars"), 3);
+    var rk = RANGES[rng][1]; skel($("topArtists")); skel($("topTracks"));
     try {
       var a = await api("GET", "/me/top/artists?time_range=" + rk + "&limit=50");
       topArtistsCache = a.items || []; drawGenres(null);
       list($("topArtists"), topArtistsCache.slice(0, S.limit).map(function (x, i) { return artistRow(x, i, true); }), "No top artists for this range yet.");
       var t = await api("GET", "/me/top/tracks?time_range=" + rk + "&limit=" + S.limit);
       list($("topTracks"), (t.items || []).map(function (x, i) { return trackRow(x, i, null, { rank: true }); }), "No top tracks for this range yet.");
-    } catch (e) { fail($("topArtists"), e); clear($("topTracks")); clear($("genreBars")); }
+    } catch (e) { $("genreCard").hidden = true; fail($("topArtists"), e); clear($("topTracks")); }
   }
   async function loadWhen() {
     try {
@@ -662,11 +663,30 @@
      Discover
      ========================================================= */
   function showTracks(title, tracks) { $("disTitle").textContent = title; list($("disOut"), tracks.map(function (t, i) { return trackRow(t, i); }), "No tracks found."); }
+  /* Spotify caps search at 10 results per request for developer-mode apps, so larger asks are paged. */
   async function searchApi(q, type, limit, offset) {
-    var m = await marketOf();
-    var path = function (l) { return "/search?q=" + encodeURIComponent(q) + "&type=" + type + "&limit=" + l + "&market=" + m + (offset ? "&offset=" + offset : ""); };
-    try { return await api("GET", path(limit)); }
-    catch (e) { if (e.status === 400 && limit > 10) return api("GET", path(10)); throw e; }
+    var m = await marketOf(), want = Math.max(1, limit || 10), off = offset || 0, out = null;
+    while (want > 0) {
+      var l = Math.min(10, want);
+      var r = await api("GET", "/search?q=" + encodeURIComponent(q) + "&type=" + type + "&limit=" + l + "&market=" + m + (off ? "&offset=" + off : ""));
+      if (!out) out = r || {};
+      else Object.keys(r || {}).forEach(function (k) { if (out[k] && r[k] && r[k].items) out[k].items = out[k].items.concat(r[k].items); });
+      var got = Math.max.apply(null, Object.keys(r || {}).map(function (k) { return (r[k] && r[k].items) ? r[k].items.length : 0; }).concat([0]));
+      if (got < l) break;
+      want -= l; off += l;
+    }
+    return out || {};
+  }
+  /* Replacement for the removed artist top-tracks endpoint: search the catalog by artist and keep their own tracks. */
+  async function artistTracks(a, n) {
+    var r = await searchApi('artist:"' + a.name + '"', "track", n || 20);
+    var seen = {}, out = [];
+    ((r.tracks && r.tracks.items) || []).forEach(function (t) {
+      if (!t || seen[t.name.toLowerCase()]) return;
+      if (!(t.artists || []).some(function (x) { return x.id === a.id || x.name === a.name; })) return;
+      seen[t.name.toLowerCase()] = 1; out.push(t);
+    });
+    return out;
   }
   async function runSearch() {
     var q = $("q").value.trim(); if (!q) return;
@@ -690,7 +710,17 @@
       var a = await api("GET", "/me/top/artists?time_range=medium_term&limit=30"), counts = {};
       (a.items || []).forEach(function (x) { (x.genres || []).forEach(function (g) { counts[g] = (counts[g] || 0) + 1; }); });
       var gs = Object.keys(counts).sort(function (x, y) { return counts[y] - counts[x]; }).slice(0, 12);
-      if (!gs.length) box.appendChild(h("p", { class: "empty", text: "Listen to more and your genres will appear here." }));
+      if (!gs.length) {
+        $("genreHead").textContent = "Explore your artists";
+        var arts = (a.items || []).slice(0, 12);
+        if (!arts.length) box.appendChild(h("p", { class: "empty", text: "Listen to more and your artists will appear here." }));
+        arts.forEach(function (ar) {
+          var c = h("button", { class: "chip", type: "button", "aria-pressed": "false", text: ar.name });
+          c.addEventListener("click", function () { box.querySelectorAll(".chip").forEach(function (x) { x.setAttribute("aria-pressed", String(x === c)); }); artistTop(ar); });
+          box.appendChild(c);
+        });
+        return;
+      }
       gs.forEach(function (g) {
         var b = h("button", { class: "chip", type: "button", "aria-pressed": "false", text: g });
         b.addEventListener("click", function () { box.querySelectorAll(".chip").forEach(function (c) { c.setAttribute("aria-pressed", String(c === b)); }); runGenre(g); });
@@ -770,11 +800,11 @@
     var genres = (pick.mood ? MOODS[pick.mood] : []).concat(pick.act ? ACTS[pick.act] : []);
     if (!genres.length && !likes.length) { note($("djMsg"), "warn", "Pick a mood, an activity or add an artist first."); return; }
     note($("djMsg"), "", ""); skel($("djOut"), 5); $("djSave").hidden = true; $("djBuild").disabled = true;
-    var target = (+$("djLen").value) * 60000, market = await marketOf(), pools = [];
+    var target = (+$("djLen").value) * 60000, pools = [];
     try {
       for (var i = 0; i < likes.length; i++) {
         var r = await searchApi(likes[i], "artist", 1), a = r.artists && r.artists.items && r.artists.items[0];
-        if (a) { var tt = await api("GET", "/artists/" + a.id + "/top-tracks?market=" + market); pools.push(shuffle((tt.tracks || []).slice())); }
+        if (a) pools.push(shuffle(await artistTracks(a, 20)));
       }
       var gl = shuffle(genres.slice()).slice(0, 4);
       for (var j = 0; j < gl.length; j++) { var gr = await searchApi('genre:"' + gl[j] + '"', "track", 20, Math.floor(Math.random() * 25)); pools.push(shuffle(((gr.tracks && gr.tracks.items) || []).slice())); }
@@ -794,8 +824,8 @@
     try {
       var me = await getMe(), nm = ((pick.mood || "") + " " + (pick.act || "")).trim() || "Studio mix";
       var d = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      var pl = await api("POST", "/users/" + encodeURIComponent(me.id) + "/playlists", { name: nm + " · " + d, description: "Built with Spotify Studio", public: false });
-      for (var i = 0; i < mix.length; i += 100) await api("POST", "/playlists/" + pl.id + "/tracks", { uris: mix.slice(i, i + 100).map(function (t) { return t.uri; }) });
+      var pl = await api("POST", "/me/playlists", { name: nm + " · " + d, description: "Built with Spotify Studio", public: false });
+      for (var i = 0; i < mix.length; i += 100) await api("POST", "/playlists/" + pl.id + "/items", { uris: mix.slice(i, i + 100).map(function (t) { return t.uri; }) });
       note($("djMsg"), "ok", "Saved to your library as a private playlist.");
       var u = safeUrl(pl.external_urls && pl.external_urls.spotify);
       if (u) $("djMsg").firstChild.appendChild(h("a", { href: u, target: "_blank", rel: "noopener", text: "Open" }));
